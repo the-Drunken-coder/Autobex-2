@@ -6,14 +6,43 @@ A web application that finds abandoned places by querying OpenStreetMap data. Se
 
 - **Three Search Methods:**
   - City/Place Names: Enter a city name and search within its boundaries
-  - Coordinates + Radius: Specify a center point and search radius in kilometers
-  - Polygon Coordinates: Define a custom search area with multiple coordinate points
+  - Coordinates + Radius: Specify a center point and search radius in kilometers (click on map to set center)
+  - Polygon Coordinates: Define a custom search area with multiple coordinate points (click on map to add points)
 
-- **Interactive Map:** View results on an interactive Leaflet map with markers for each abandoned place
+- **Interactive Map:** 
+  - View results on an interactive Leaflet map with markers for each abandoned place
+  - Click on the map to set search coordinates (radius center or polygon points)
+  - Multiple basemap options: OpenStreetMap, Google Maps Satellite, Bing Maps Satellite, Esri World Imagery
+  - Marker clustering for better performance with many results
 
-- **Filter Options:** Include or exclude ruins and disused places in your search
+- **Comprehensive Filter System:** 
+  - **Basic Status:** Abandoned, Disused
+  - **Ruins:** ruins=yes, historic=ruins
+  - **Railways:** railway=abandoned, railway=disused, disused:railway=station, abandoned:railway=station
+  - **Buildings:** building:condition=ruinous, building=ruins
+  - **Amenities:** disused:amenity=*, abandoned:amenity=*
+  - **Shops:** disused:shop=*, abandoned:shop=*, shop=vacant
+  - **Land Use:** landuse=brownfield
+  - **Aeroways:** disused:aeroway=*, abandoned:aeroway=*
+  - All filters are collapsible and can be toggled individually
 
-- **Results Display:** Browse found places with details including name, type, and location tags
+- **Results Management:**
+  - Group nearby places together (toggleable, 150m threshold)
+  - Sort results by Name (A-Z/Z-A), Type, or Distance from map center (when grouping is disabled)
+  - Collapsible groups for multiple places in the same area
+  - Click on results to focus the map and open popup
+  - Results sidebar can be collapsed/expanded for better map visibility
+
+- **User Interface:**
+  - Modern dark theme with responsive design
+  - Topbar navigation for easy access to tools
+  - Collapsible sidebar for mobile-friendly experience
+  - Real-time progress tracking with visual feedback
+  - Interactive map controls with custom markers and popups
+
+- **Progress Tracking:** Real-time progress indicator with step-by-step status updates during searches
+
+- **Results Display:** Browse found places with details including name, type, address, and location tags. Each result includes links to Google Maps and Bing Maps.
 
 ## Project Structure
 
@@ -27,6 +56,7 @@ A web application that finds abandoned places by querying OpenStreetMap data. Se
 │       └── search.js       # Cloudflare Pages Function for OSM queries
 ├── package.json            # Dependencies and scripts
 ├── wrangler.toml           # Cloudflare Pages configuration
+├── start.py                # Python script to start dev server (checks prerequisites)
 └── README.md               # This file
 ```
 
@@ -38,6 +68,16 @@ npm install
 ```
 
 2. **Run locally:**
+
+You can start the development server in two ways:
+
+**Option A: Using Python script (recommended for Windows):**
+```bash
+python start.py
+```
+This script will automatically check for Node.js/npm, install dependencies if needed, and start the server.
+
+**Option B: Using npm directly:**
 ```bash
 npm run dev
 ```
@@ -53,24 +93,31 @@ The application will be available at `http://localhost:8788` (or the port shown 
 
 ### Coordinates + Radius Search
 1. Select "Coordinates + Radius" from the search type dropdown
-2. Enter:
-   - Latitude (e.g., 40.7128)
-   - Longitude (e.g., -74.0060)
-   - Radius in kilometers (e.g., 5)
-3. Click "Search"
+2. Either:
+   - Click on the map to set the center point (coordinates will auto-fill)
+   - Or manually enter Latitude (e.g., 40.7128) and Longitude (e.g., -74.0060)
+3. Enter Radius in kilometers (e.g., 5)
+4. Optionally adjust filters in the Filters section
+5. Click "Find Places"
+
+**Tip:** The map cursor changes to a crosshair when radius search is selected. Click anywhere on the map to set the center point.
 
 ### Polygon Search
-1. Select "Polygon Coordinates" from the search type dropdown
-2. Enter coordinates, one per line, in the format `lat,lon`:
+1. Select "Custom Polygon" from the search type dropdown
+2. Either:
+   - Click on the map to add polygon points (coordinates will appear in the textarea)
+   - Or manually enter coordinates, one per line, in the format `lat,lon`:
 ```
 40.7128,-74.0060
 40.7228,-74.0060
 40.7228,-74.0160
 40.7128,-74.0160
 ```
-3. Click "Search"
+3. Use "Clear Points" button to reset if needed
+4. Optionally adjust filters in the Filters section
+5. Click "Find Places"
 
-**Note:** Polygons must have at least 3 coordinate points.
+**Note:** Polygons must have at least 3 coordinate points. The map will show a preview polygon as you add points.
 
 ## Deployment to Cloudflare Pages
 
@@ -100,11 +147,43 @@ Alternatively, connect your GitHub repository to Cloudflare Pages for automatic 
 
 ## OpenStreetMap Tags Queried
 
-The application searches for places tagged with:
-- `abandoned=yes` + `building=*`
-- `disused=yes` + `building=*` (if enabled)
-- `ruins=yes` (if enabled)
-- `historic=ruins` (if enabled)
+The application searches for places tagged with various abandoned/disused indicators. All filters can be toggled individually:
+
+**Basic Status:**
+- `abandoned=yes`
+- `disused=yes`
+
+**Ruins:**
+- `ruins=yes`
+- `historic=ruins`
+
+**Railways:**
+- `railway=abandoned`
+- `railway=disused`
+- `disused:railway=station`
+- `abandoned:railway=station`
+
+**Buildings:**
+- `building:condition=ruinous` (and variants)
+- `building=ruins`
+
+**Amenities:**
+- `disused:amenity=*`
+- `abandoned:amenity=*`
+
+**Shops:**
+- `disused:shop=*`
+- `abandoned:shop=*`
+- `shop=vacant`
+
+**Land Use:**
+- `landuse=brownfield`
+
+**Aeroways:**
+- `disused:aeroway=*`
+- `abandoned:aeroway=*`
+
+The query searches nodes, ways, and relations matching these tags within the specified search area.
 
 ## API Endpoint
 
@@ -117,8 +196,28 @@ Query Parameters:
 - `area`: City name (for `type=city`)
 - `lat`, `lon`, `radius`: Coordinates and radius (for `type=radius`)
 - `polygon`: Comma-separated coordinates `lat1,lon1,lat2,lon2,...` (for `type=polygon`)
-- `includeRuins`: Boolean (default: `true`)
-- `includeDisused`: Boolean (default: `true`)
+
+**Filter Parameters** (all default to `true` if not specified):
+- `abandoned`: Include abandoned places
+- `disused`: Include disused places
+- `ruinsYes`: Include ruins=yes
+- `historicRuins`: Include historic=ruins
+- `railwayAbandoned`: Include railway=abandoned
+- `railwayDisused`: Include railway=disused
+- `disusedRailwayStation`: Include disused:railway=station
+- `abandonedRailwayStation`: Include abandoned:railway=station
+- `buildingConditionRuinous`: Include building:condition=ruinous
+- `buildingRuins`: Include building=ruins
+- `disusedAmenity`: Include disused:amenity=*
+- `abandonedAmenity`: Include abandoned:amenity=*
+- `disusedShop`: Include disused:shop=*
+- `abandonedShop`: Include abandoned:shop=*
+- `shopVacant`: Include shop=vacant
+- `landuseBrownfield`: Include landuse=brownfield
+- `disusedAeroway`: Include disused:aeroway=*
+- `abandonedAeroway`: Include abandoned:aeroway=*
+
+Set any filter to `false` to exclude that category from results.
 
 Response:
 ```json
@@ -140,12 +239,20 @@ Response:
 
 ## Technical Details
 
-- **Frontend:** Vanilla JavaScript with Leaflet.js for map visualization
+- **Frontend:** 
+  - Vanilla JavaScript with Leaflet.js for map visualization
+  - Leaflet.markercluster for marker clustering
+  - Lucide Icons for UI icons
+  - Dark theme with responsive design
 - **Backend:** Cloudflare Pages Functions (serverless)
 - **APIs Used:**
   - Nominatim API for geocoding
-  - Overpass API for OpenStreetMap queries
-- **Map Tiles:** OpenStreetMap tiles
+  - Overpass API for OpenStreetMap queries (60 second timeout)
+- **Map Tiles:** 
+  - OpenStreetMap (default)
+  - Google Maps Satellite
+  - Bing Maps Satellite
+  - Esri World Imagery
 
 ## Rate Limiting
 

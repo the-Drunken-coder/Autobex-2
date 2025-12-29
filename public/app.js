@@ -8,6 +8,8 @@ let radiusCenterMarker = null;
 let isClickModeActive = false;
 let currentBasemap = null;
 let basemapLayers = {};
+let placeGroups = [];
+let currentTool = 'search';
 
 // Bing Maps tile layer with quadkey conversion
 const BingMapsLayer = L.TileLayer.extend({
@@ -37,7 +39,7 @@ function initBasemaps() {
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
             maxZoom: 19
         }),
-        google: L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+        google: L.tileLayer('https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
             attribution: '&copy; <a href="https://www.google.com/maps">Google Maps</a>',
             subdomains: ['0', '1', '2', '3'],
             maxZoom: 20
@@ -80,26 +82,8 @@ function initMap() {
     // Add default light basemap
     switchBasemap('light');
     
-    // Initialize marker cluster group
-    markerClusterGroup = L.markerClusterGroup({
-        chunkedLoading: true,
-        maxClusterRadius: 50,
-        spiderfyOnMaxZoom: true,
-        showCoverageOnHover: false,
-        zoomToBoundsOnClick: true,
-        iconCreateFunction: function(cluster) {
-            const count = cluster.getChildCount();
-            let size = 'small';
-            if (count > 100) size = 'large';
-            else if (count > 20) size = 'medium';
-            
-            return L.divIcon({
-                html: `<div class="marker-cluster marker-cluster-${size}">${count}</div>`,
-                className: 'marker-cluster-container',
-                iconSize: L.point(40, 40)
-            });
-        }
-    });
+    // Initialize marker cluster group as a layer group container
+    markerClusterGroup = L.layerGroup();
     markerClusterGroup.addTo(map);
 }
 
@@ -311,6 +295,75 @@ function getBingMapsUrl(lat, lon, name = '') {
     return `https://www.bing.com/maps?cp=${lat}~${lon}&lvl=15&sp=point.${lat}_${lon}_${encodeURIComponent(name || 'Location')}`;
 }
 
+// Calculate distance between two coordinates (Haversine formula) in meters
+function calculateDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371000; // Earth's radius in meters
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+}
+
+// Group places by proximity
+function groupPlacesByProximity(places, thresholdMeters = 150) {
+    const groups = [];
+    const used = new Set();
+    
+    for (let i = 0; i < places.length; i++) {
+        if (used.has(i)) continue;
+        
+        const group = {
+            id: groups.length,
+            places: [places[i]],
+            centerLat: places[i].lat,
+            centerLon: places[i].lon,
+            name: null
+        };
+        used.add(i);
+        
+        // Find nearby places
+        for (let j = i + 1; j < places.length; j++) {
+            if (used.has(j)) continue;
+            
+            const distance = calculateDistance(
+                places[i].lat, places[i].lon,
+                places[j].lat, places[j].lon
+            );
+            
+            if (distance <= thresholdMeters) {
+                group.places.push(places[j]);
+                used.add(j);
+                
+                // Update center (average of all places in group)
+                group.centerLat = group.places.reduce((sum, p) => sum + p.lat, 0) / group.places.length;
+                group.centerLon = group.places.reduce((sum, p) => sum + p.lon, 0) / group.places.length;
+            }
+        }
+        
+        // Generate group name
+        if (group.places.length > 1) {
+            const namedPlaces = group.places.filter(p => p.name);
+            if (namedPlaces.length > 0) {
+                group.name = `${namedPlaces[0].name} Area`;
+            } else if (group.places[0].address) {
+                const street = group.places[0].address.split(',')[0];
+                group.name = `${street} Area`;
+            } else {
+                group.name = `Group ${group.id + 1}`;
+            }
+        } else {
+            group.name = group.places[0].name || 'Single Location';
+        }
+        
+        groups.push(group);
+    }
+    
+    return groups;
+}
+
 // Add marker to map
 function addMarker(place) {
     const lat = place.lat;
@@ -485,17 +538,40 @@ function parsePolygonCoordinates(text) {
 // Search for abandoned places
 async function searchAbandonedPlaces() {
     const searchType = document.getElementById('searchType').value;
-    const includeRuins = document.getElementById('includeRuins').checked;
-    const includeDisused = document.getElementById('includeDisused').checked;
     const searchBtn = document.getElementById('searchBtn');
     
+    // Collect all filter selections
+    const filters = {
+        abandoned: document.getElementById('filter-abandoned').checked,
+        disused: document.getElementById('filter-disused').checked,
+        ruinsYes: document.getElementById('filter-ruins-yes').checked,
+        historicRuins: document.getElementById('filter-historic-ruins').checked,
+        railwayAbandoned: document.getElementById('filter-railway-abandoned').checked,
+        railwayDisused: document.getElementById('filter-railway-disused').checked,
+        disusedRailwayStation: document.getElementById('filter-disused-railway-station').checked,
+        abandonedRailwayStation: document.getElementById('filter-abandoned-railway-station').checked,
+        buildingConditionRuinous: document.getElementById('filter-building-condition-ruinous').checked,
+        buildingRuins: document.getElementById('filter-building-ruins').checked,
+        disusedAmenity: document.getElementById('filter-disused-amenity').checked,
+        abandonedAmenity: document.getElementById('filter-abandoned-amenity').checked,
+        disusedShop: document.getElementById('filter-disused-shop').checked,
+        abandonedShop: document.getElementById('filter-abandoned-shop').checked,
+        shopVacant: document.getElementById('filter-shop-vacant').checked,
+        landuseBrownfield: document.getElementById('filter-landuse-brownfield').checked,
+        disusedAeroway: document.getElementById('filter-disused-aeroway').checked,
+        abandonedAeroway: document.getElementById('filter-abandoned-aeroway').checked
+    };
+    
     console.log('🔍 [AutoBex 2] Starting search...');
-    console.log('📋 [Search Params]', { searchType, includeRuins, includeDisused });
+    console.log('📋 [Search Params]', { searchType, filters });
     
     let params = new URLSearchParams({
-        type: searchType,
-        includeRuins: includeRuins,
-        includeDisused: includeDisused
+        type: searchType
+    });
+    
+    // Add all filter parameters
+    Object.keys(filters).forEach(key => {
+        params.append(key, filters[key]);
     });
     
     try {
@@ -662,32 +738,33 @@ async function searchAbandonedPlaces() {
         updateProgressSteps(steps);
         updateProgress(75, `Adding ${data.places.length} markers to map...`, true);
         
-        // Add markers for each place
-        console.log(`📍 [Map] Adding ${data.places.length} markers...`);
-        const markerStartTime = Date.now();
-        const totalPlaces = data.places.length;
+        // Group places by proximity (if enabled)
+        const enableGrouping = document.getElementById('enableGrouping').checked;
+        let groupingStartTime = Date.now();
         
-        // Add markers with progress updates
-        for (let i = 0; i < data.places.length; i++) {
-            const place = data.places[i];
-            addMarker(place);
-            
-            // Update progress every 5 markers or at milestones
-            if ((i + 1) % 5 === 0 || i === 0 || i === data.places.length - 1) {
-                const progress = 75 + Math.floor((i + 1) / totalPlaces * 20);
-                updateProgress(progress, `Adding markers... ${i + 1}/${totalPlaces}`, true);
-            }
-            
-            if ((i + 1) % 10 === 0) {
-                console.log(`  ✓ Added ${i + 1}/${data.places.length} markers...`);
-            }
-            
-            // Small delay for very large result sets to keep UI responsive
-            if (totalPlaces > 100 && (i + 1) % 10 === 0) {
-                await new Promise(resolve => setTimeout(resolve, 10));
-            }
+        if (enableGrouping) {
+            console.log('📊 [Grouping] Grouping places by proximity...');
+            placeGroups = groupPlacesByProximity(data.places, 150); // 150 meter threshold
+            console.log(`📊 [Grouping] Created ${placeGroups.length} groups from ${data.places.length} places`);
+        } else {
+            console.log('📊 [Grouping] Grouping disabled - showing all places individually');
+            // Create individual groups for each place (no grouping)
+            placeGroups = data.places.map((place, index) => ({
+                id: index,
+                places: [place],
+                centerLat: place.lat,
+                centerLon: place.lon,
+                name: place.name || 'Location'
+            }));
         }
         
+        updateProgress(75, 'Adding markers to map...', true);
+        steps[steps.length - 1] = { text: `Adding ${data.places.length} markers...`, active: true, completed: false };
+        updateProgressSteps(steps);
+        
+        // Update map clustering based on groups
+        const markerStartTime = Date.now();
+        updateMapClusters(placeGroups, enableGrouping);
         const markerDuration = Date.now() - markerStartTime;
         console.log(`✅ [Map] All markers added in ${markerDuration}ms`);
         
@@ -696,7 +773,7 @@ async function searchAbandonedPlaces() {
         steps[steps.length - 1] = { text: `Added ${data.places.length} markers`, active: false, completed: true };
         updateProgressSteps(steps);
         
-        displayResults(data.places);
+        displayResults(data.places, placeGroups);
         
         // Fit map to show all markers if we have results
         if (data.places.length > 0) {
@@ -735,12 +812,233 @@ async function searchAbandonedPlaces() {
     }
 }
 
-// Display results
-function displayResults(places) {
+// Update map clusters based on groups
+function updateMapClusters(groups, enableGrouping = true) {
+    // Clear existing clusters
+    if (markerClusterGroup) {
+        markerClusterGroup.clearLayers();
+    }
+    markers = [];
+    
+    if (!enableGrouping) {
+        // No grouping - add all markers directly with standard clustering
+        const allMarkers = [];
+        groups.forEach(group => {
+            group.places.forEach(place => {
+                const marker = createMarkerForPlace(place);
+                allMarkers.push(marker);
+                markers.push(marker);
+            });
+        });
+        
+        // Use standard marker clustering
+        const standardClusterGroup = L.markerClusterGroup({
+            chunkedLoading: true,
+            maxClusterRadius: 50,
+            spiderfyOnMaxZoom: true,
+            showCoverageOnHover: false,
+            zoomToBoundsOnClick: true,
+            iconCreateFunction: function(cluster) {
+                const count = cluster.getChildCount();
+                let size = 'small';
+                if (count > 20) size = 'medium';
+                if (count > 50) size = 'large';
+                
+                return L.divIcon({
+                    html: `<div class="marker-cluster marker-cluster-${size}">${count}</div>`,
+                    className: 'marker-cluster-container',
+                    iconSize: L.point(40, 40)
+                });
+            }
+        });
+        
+        allMarkers.forEach(m => standardClusterGroup.addLayer(m));
+        markerClusterGroup.addLayer(standardClusterGroup);
+        return;
+    }
+    
+    // Grouping enabled - create separate cluster groups for each group
+    groups.forEach((group, groupIndex) => {
+        const groupMarkers = [];
+        
+        // Create markers for all places in this group
+        group.places.forEach(place => {
+            const marker = createMarkerForPlace(place);
+            groupMarkers.push(marker);
+            markers.push(marker);
+        });
+        
+        if (group.places.length > 1) {
+            // Multiple places - create a cluster group for this group
+            const clusterGroup = L.markerClusterGroup({
+                maxClusterRadius: 50, // Small radius to keep grouped places together
+                spiderfyOnMaxZoom: true,
+                showCoverageOnHover: false,
+                zoomToBoundsOnClick: true,
+                iconCreateFunction: function(cluster) {
+                    const count = cluster.getChildCount();
+                    let size = 'small';
+                    if (count > 20) size = 'medium';
+                    if (count > 50) size = 'large';
+                    
+                    return L.divIcon({
+                        html: `<div class="marker-cluster marker-cluster-${size}">${count}</div>`,
+                        className: 'marker-cluster-container',
+                        iconSize: L.point(40, 40)
+                    });
+                }
+            });
+            
+            groupMarkers.forEach(m => clusterGroup.addLayer(m));
+            markerClusterGroup.addLayer(clusterGroup);
+        } else {
+            // Single place - add directly to main cluster group
+            markerClusterGroup.addLayer(groupMarkers[0]);
+        }
+    });
+}
+
+// Create marker for a place (extracted from addMarker)
+function createMarkerForPlace(place) {
+    const lat = place.lat;
+    const lon = place.lon;
+    
+    // Build status tags
+    const statusTags = [];
+    if (place.tags.abandoned === 'yes') statusTags.push('Abandoned');
+    if (place.tags.disused === 'yes') statusTags.push('Disused');
+    if (place.tags.ruins === 'yes') statusTags.push('Ruins');
+    if (place.tags.historic === 'ruins') statusTags.push('Historic Ruins');
+    
+    // Determine display name
+    let displayName = place.name;
+    if (!displayName) {
+        if (place.address) {
+            displayName = place.address.split(',')[0];
+        } else if (place.buildingType) {
+            displayName = `${place.buildingType.charAt(0).toUpperCase() + place.buildingType.slice(1)} Structure`;
+        } else if (place.additionalInfo?.state) {
+            displayName = `Abandoned Place (${place.additionalInfo.state})`;
+        } else {
+            displayName = 'Abandoned Place';
+        }
+    }
+    
+    // Build popup content
+    const popupParts = [];
+    popupParts.push(`<h3>${displayName}</h3>`);
+    
+    if (place.buildingType) {
+        popupParts.push(`<p class="popup-type"><strong>Type:</strong> ${place.buildingType}</p>`);
+    }
+    
+    if (place.address) {
+        popupParts.push(`<p class="popup-address"><strong>Address:</strong> ${place.address}</p>`);
+    }
+    
+    if (place.additionalInfo?.state || place.additionalInfo?.country) {
+        const locationParts = [];
+        if (place.additionalInfo.state) locationParts.push(place.additionalInfo.state);
+        if (place.additionalInfo.country) locationParts.push(place.additionalInfo.country);
+        if (locationParts.length > 0) {
+            popupParts.push(`<p class="popup-location">${locationParts.join(', ')}</p>`);
+        }
+    }
+    
+    if (statusTags.length > 0) {
+        popupParts.push(`<div class="popup-tags">${statusTags.map(t => `<span>${t}</span>`).join('')}</div>`);
+    } else {
+        popupParts.push(`<div class="popup-tags"><span>Abandoned</span></div>`);
+    }
+    
+    const googleMapsUrl = getGoogleMapsUrl(lat, lon, displayName);
+    const bingMapsUrl = getBingMapsUrl(lat, lon, displayName);
+    popupParts.push(`
+        <div class="popup-actions">
+            <a href="${googleMapsUrl}" target="_blank" rel="noopener noreferrer" class="popup-btn popup-btn-google">
+                <i data-lucide="external-link"></i>
+                Google Maps
+            </a>
+            <a href="${bingMapsUrl}" target="_blank" rel="noopener noreferrer" class="popup-btn popup-btn-bing">
+                <i data-lucide="external-link"></i>
+                Bing Maps
+            </a>
+        </div>
+    `);
+    
+    const popupContent = `<div class="map-popup">${popupParts.join('')}</div>`;
+    
+    const customIcon = L.divIcon({
+        className: 'custom-marker',
+        html: `<div style="background-color: #f59e0b; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 10px rgba(0,0,0,0.5);"></div>`,
+        iconSize: [12, 12]
+    });
+
+    const marker = L.marker([lat, lon], { icon: customIcon })
+        .bindPopup(popupContent);
+    
+    marker.on('popupopen', () => {
+        lucide.createIcons();
+    });
+    
+    return marker;
+}
+
+// Sort places by different criteria
+function sortPlaces(places, sortBy, mapCenter = null) {
+    const sorted = [...places];
+    
+    switch(sortBy) {
+        case 'name':
+            sorted.sort((a, b) => {
+                const nameA = (a.name || '').toLowerCase();
+                const nameB = (b.name || '').toLowerCase();
+                return nameA.localeCompare(nameB);
+            });
+            break;
+        case 'name-desc':
+            sorted.sort((a, b) => {
+                const nameA = (a.name || '').toLowerCase();
+                const nameB = (b.name || '').toLowerCase();
+                return nameB.localeCompare(nameA);
+            });
+            break;
+        case 'type':
+            sorted.sort((a, b) => {
+                const typeA = (a.buildingType || a.tags.building || '').toLowerCase();
+                const typeB = (b.buildingType || b.tags.building || '').toLowerCase();
+                return typeA.localeCompare(typeB);
+            });
+            break;
+        case 'distance':
+            if (mapCenter) {
+                sorted.sort((a, b) => {
+                    const distA = calculateDistance(mapCenter.lat, mapCenter.lon, a.lat, a.lon);
+                    const distB = calculateDistance(mapCenter.lat, mapCenter.lon, b.lat, b.lon);
+                    return distA - distB;
+                });
+            }
+            break;
+    }
+    
+    return sorted;
+}
+
+// Display results with grouping
+function displayResults(places, groups) {
     const resultList = document.getElementById('resultList');
     const resultCount = document.getElementById('resultCount');
+    const enableGrouping = document.getElementById('enableGrouping').checked;
+    const sortSection = document.getElementById('sortSection');
     
     resultCount.textContent = places.length;
+    
+    // Show/hide sort section based on grouping
+    if (enableGrouping) {
+        sortSection.style.display = 'none';
+    } else {
+        sortSection.style.display = 'block';
+    }
     
     if (places.length === 0) {
         resultList.innerHTML = '<div class="empty-state"><i data-lucide="map-pin" size="40"></i><p>No abandoned places found here.</p></div>';
@@ -748,7 +1046,139 @@ function displayResults(places) {
         return;
     }
     
-    resultList.innerHTML = places.map(place => {
+    if (!groups || groups.length === 0) {
+        groups = groupPlacesByProximity(places, 150);
+    }
+    
+    // If grouping is disabled, sort places before creating individual groups
+    if (!enableGrouping) {
+        const sortBy = document.getElementById('sortSelect').value;
+        const mapCenter = map.getCenter();
+        const sortedPlaces = sortPlaces(places, sortBy, { lat: mapCenter.lat, lon: mapCenter.lng });
+        
+        // Recreate groups from sorted places
+        groups = sortedPlaces.map((place, index) => ({
+            id: index,
+            places: [place],
+            centerLat: place.lat,
+            centerLon: place.lon,
+            name: place.name || 'Location'
+        }));
+    } else {
+        // Sort groups: groups with multiple places first, then single places
+        groups = [...groups].sort((a, b) => {
+            if (a.places.length > 1 && b.places.length === 1) return -1;
+            if (a.places.length === 1 && b.places.length > 1) return 1;
+            return 0;
+        });
+    }
+    
+    const sortedGroups = groups;
+    
+    // Re-index groups after sorting
+    resultList.innerHTML = sortedGroups.map((group, groupIndex) => {
+        if (group.places.length === 1) {
+            // Single place - no grouping needed
+            const place = group.places[0];
+            return renderPlaceCard(place, groupIndex);
+        } else {
+            // Multiple places - create collapsible group
+            return renderPlaceGroup(group, groupIndex);
+        }
+    }).join('');
+    
+    lucide.createIcons();
+    
+    // Add event listeners for collapsible groups
+    groups.forEach((group, groupIndex) => {
+        if (group.places.length > 1) {
+            const toggleBtn = document.getElementById(`group-toggle-${groupIndex}`);
+            const groupContent = document.getElementById(`group-content-${groupIndex}`);
+            if (toggleBtn && groupContent) {
+                toggleBtn.addEventListener('click', () => {
+                    const isExpanded = groupContent.style.display !== 'none';
+                    groupContent.style.display = isExpanded ? 'none' : 'block';
+                    const icon = toggleBtn.querySelector('i');
+                    if (icon) {
+                        icon.setAttribute('data-lucide', isExpanded ? 'chevron-right' : 'chevron-down');
+                        lucide.createIcons();
+                    }
+                });
+            }
+        }
+    });
+}
+
+// Render a single place card
+function renderPlaceCard(place, index) {
+    // Build status tags
+    const tags = [];
+    if (place.tags.abandoned === 'yes') tags.push('Abandoned');
+    if (place.tags.disused === 'yes') tags.push('Disused');
+    if (place.tags.ruins === 'yes') tags.push('Ruins');
+    if (place.tags.historic === 'ruins') tags.push('Historic');
+    
+    // Determine display name
+    let displayName = place.name;
+    if (!displayName) {
+        if (place.address) {
+            displayName = place.address.split(',')[0];
+        } else if (place.buildingType) {
+            displayName = `${place.buildingType.charAt(0).toUpperCase() + place.buildingType.slice(1)} Structure`;
+        } else if (place.additionalInfo?.state) {
+            displayName = `Abandoned Place (${place.additionalInfo.state})`;
+        } else {
+            displayName = 'Abandoned Place';
+        }
+    }
+    
+    // Get building type
+    const placeType = place.buildingType || place.tags.building || place.tags.amenity || place.tags.landuse || 'Structure';
+    
+    // Build address info
+    let addressInfo = '';
+    if (place.address) {
+        addressInfo = `<p class="result-address">${place.address}</p>`;
+    } else if (place.additionalInfo?.state || place.additionalInfo?.country) {
+        const locationParts = [];
+        if (place.additionalInfo.state) locationParts.push(place.additionalInfo.state);
+        if (place.additionalInfo.country) locationParts.push(place.additionalInfo.country);
+        if (locationParts.length > 0) {
+            addressInfo = `<p class="result-location">${locationParts.join(', ')}</p>`;
+        }
+    }
+    
+    // Map links
+    const googleMapsUrl = getGoogleMapsUrl(place.lat, place.lon, displayName);
+    const bingMapsUrl = getBingMapsUrl(place.lat, place.lon, displayName);
+    
+    return `
+        <div class="result-card">
+            <div onclick="focusPlace(${place.lat}, ${place.lon})" style="cursor: pointer;">
+                <h3>${displayName}</h3>
+                <p class="result-type"><strong>Type:</strong> ${placeType}</p>
+                ${addressInfo}
+                <div class="result-tags">
+                    ${tags.length > 0 ? tags.map(t => `<span class="tag-badge">${t}</span>`).join('') : '<span class="tag-badge">Abandoned</span>'}
+                </div>
+            </div>
+            <div class="result-actions">
+                <a href="${googleMapsUrl}" target="_blank" rel="noopener noreferrer" class="result-btn result-btn-google" onclick="event.stopPropagation()">
+                    <i data-lucide="external-link"></i>
+                    Google Maps
+                </a>
+                <a href="${bingMapsUrl}" target="_blank" rel="noopener noreferrer" class="result-btn result-btn-bing" onclick="event.stopPropagation()">
+                    <i data-lucide="external-link"></i>
+                    Bing Maps
+                </a>
+            </div>
+        </div>
+    `;
+}
+
+// Render a group of places as a collapsible dropdown
+function renderPlaceGroup(group, groupIndex) {
+    const placesHtml = group.places.map(place => {
         // Build status tags
         const tags = [];
         if (place.tags.abandoned === 'yes') tags.push('Abandoned');
@@ -756,44 +1186,32 @@ function displayResults(places) {
         if (place.tags.ruins === 'yes') tags.push('Ruins');
         if (place.tags.historic === 'ruins') tags.push('Historic');
         
-        // Determine display name (same logic as popup)
+        // Determine display name
         let displayName = place.name;
         if (!displayName) {
             if (place.address) {
                 displayName = place.address.split(',')[0];
             } else if (place.buildingType) {
                 displayName = `${place.buildingType.charAt(0).toUpperCase() + place.buildingType.slice(1)} Structure`;
-            } else if (place.additionalInfo?.state) {
-                displayName = `Abandoned Place (${place.additionalInfo.state})`;
             } else {
                 displayName = 'Abandoned Place';
             }
         }
         
-        // Get building type
         const placeType = place.buildingType || place.tags.building || place.tags.amenity || place.tags.landuse || 'Structure';
         
-        // Build address info
         let addressInfo = '';
         if (place.address) {
             addressInfo = `<p class="result-address">${place.address}</p>`;
-        } else if (place.additionalInfo?.state || place.additionalInfo?.country) {
-            const locationParts = [];
-            if (place.additionalInfo.state) locationParts.push(place.additionalInfo.state);
-            if (place.additionalInfo.country) locationParts.push(place.additionalInfo.country);
-            if (locationParts.length > 0) {
-                addressInfo = `<p class="result-location">${locationParts.join(', ')}</p>`;
-            }
         }
         
-        // Map links
         const googleMapsUrl = getGoogleMapsUrl(place.lat, place.lon, displayName);
         const bingMapsUrl = getBingMapsUrl(place.lat, place.lon, displayName);
         
         return `
-            <div class="result-card">
+            <div class="result-card result-card-nested">
                 <div onclick="focusPlace(${place.lat}, ${place.lon})" style="cursor: pointer;">
-                    <h3>${displayName}</h3>
+                    <h4>${displayName}</h4>
                     <p class="result-type"><strong>Type:</strong> ${placeType}</p>
                     ${addressInfo}
                     <div class="result-tags">
@@ -814,7 +1232,18 @@ function displayResults(places) {
         `;
     }).join('');
     
-    lucide.createIcons();
+    return `
+        <div class="result-group">
+            <button class="result-group-header" id="group-toggle-${groupIndex}" onclick="focusPlace(${group.centerLat}, ${group.centerLon})">
+                <i data-lucide="chevron-down"></i>
+                <span class="group-name">${group.name}</span>
+                <span class="group-count">${group.places.length} places</span>
+            </button>
+            <div class="result-group-content" id="group-content-${groupIndex}">
+                ${placesHtml}
+            </div>
+        </div>
+    `;
 }
 
 // Focus on a place when clicked from results
@@ -923,6 +1352,186 @@ document.getElementById('clearPolygonBtn').addEventListener('click', clearPolygo
 document.getElementById('basemapSelect').addEventListener('change', (e) => {
     switchBasemap(e.target.value);
 });
+
+// Filter toggle functionality
+document.getElementById('filterToggle').addEventListener('click', () => {
+    const filterContent = document.getElementById('filterContent');
+    const filterIcon = document.getElementById('filterIcon');
+    const isExpanded = !filterContent.classList.contains('collapsed');
+    
+    if (isExpanded) {
+        filterContent.classList.add('collapsed');
+        filterContent.style.display = 'none';
+        filterIcon.setAttribute('data-lucide', 'chevron-right');
+    } else {
+        filterContent.classList.remove('collapsed');
+        filterContent.style.display = 'flex';
+        filterIcon.setAttribute('data-lucide', 'chevron-down');
+    }
+    lucide.createIcons();
+});
+
+// Filter group toggle functionality - set up after DOM and Lucide are ready
+function setupFilterGroupToggles() {
+    document.querySelectorAll('.filter-group-header').forEach(header => {
+        header.addEventListener('click', (e) => {
+            // Don't toggle if clicking on the checkbox
+            if (e.target.closest('.group-checkbox')) return;
+            
+            const groupName = header.getAttribute('data-group');
+            const content = document.querySelector(`[data-group-content="${groupName}"]`);
+            const icon = header.querySelector('i[data-lucide]');
+            
+            if (!content) return;
+            
+            const isExpanded = !content.classList.contains('collapsed');
+            
+            if (isExpanded) {
+                content.classList.add('collapsed');
+                content.style.display = 'none';
+                if (icon) icon.setAttribute('data-lucide', 'chevron-right');
+            } else {
+                content.classList.remove('collapsed');
+                content.style.display = 'flex';
+                if (icon) icon.setAttribute('data-lucide', 'chevron-down');
+            }
+            lucide.createIcons();
+        });
+    });
+}
+
+// Set up filter group toggles after initialization
+setupFilterGroupToggles();
+
+// Group checkbox functionality - toggle all items in group
+document.querySelectorAll('.group-checkbox input').forEach(groupCheckbox => {
+    groupCheckbox.addEventListener('change', (e) => {
+        e.stopPropagation();
+        const groupName = groupCheckbox.getAttribute('data-group');
+        const isChecked = groupCheckbox.checked;
+        
+        // Toggle all checkboxes in this group
+        document.querySelectorAll(`input[data-group="${groupName}"]:not(.group-checkbox input)`).forEach(checkbox => {
+            checkbox.checked = isChecked;
+        });
+    });
+});
+
+// Individual checkbox change - update group checkbox state
+document.querySelectorAll('input[type="checkbox"][data-group]:not(.group-checkbox input)').forEach(checkbox => {
+    checkbox.addEventListener('change', () => {
+        const groupName = checkbox.getAttribute('data-group');
+        const groupCheckbox = document.querySelector(`.group-checkbox input[data-group="${groupName}"]`);
+        const groupCheckboxes = document.querySelectorAll(`input[data-group="${groupName}"]:not(.group-checkbox input)`);
+        const allChecked = Array.from(groupCheckboxes).every(cb => cb.checked);
+        const someChecked = Array.from(groupCheckboxes).some(cb => cb.checked);
+        
+        groupCheckbox.checked = allChecked;
+        groupCheckbox.indeterminate = someChecked && !allChecked;
+    });
+});
+
+// Grouping toggle - reapply grouping if results exist
+document.getElementById('enableGrouping').addEventListener('change', () => {
+    // If we have existing results, reapply grouping
+    if (placeGroups && placeGroups.length > 0) {
+        const enableGrouping = document.getElementById('enableGrouping').checked;
+        const sortSection = document.getElementById('sortSection');
+        const allPlaces = [];
+        placeGroups.forEach(group => {
+            allPlaces.push(...group.places);
+        });
+        
+        // Show/hide sort section
+        if (enableGrouping) {
+            sortSection.style.display = 'none';
+        } else {
+            sortSection.style.display = 'block';
+        }
+        
+        if (enableGrouping) {
+            placeGroups = groupPlacesByProximity(allPlaces, 150);
+        } else {
+            // Apply current sort when disabling grouping
+            const sortBy = document.getElementById('sortSelect').value;
+            const mapCenter = map.getCenter();
+            const sortedPlaces = sortPlaces(allPlaces, sortBy, { lat: mapCenter.lat, lon: mapCenter.lng });
+            
+            placeGroups = sortedPlaces.map((place, index) => ({
+                id: index,
+                places: [place],
+                centerLat: place.lat,
+                centerLon: place.lon,
+                name: place.name || 'Location'
+            }));
+        }
+        
+        // Update map and display
+        updateMapClusters(placeGroups, enableGrouping);
+        displayResults(allPlaces, placeGroups);
+    }
+});
+
+// Sort selector - reapply sorting when changed (only when grouping is disabled)
+document.getElementById('sortSelect').addEventListener('change', () => {
+    const enableGrouping = document.getElementById('enableGrouping').checked;
+    if (!enableGrouping && placeGroups && placeGroups.length > 0) {
+        const allPlaces = [];
+        placeGroups.forEach(group => {
+            allPlaces.push(...group.places);
+        });
+        
+        const sortBy = document.getElementById('sortSelect').value;
+        const mapCenter = map.getCenter();
+        const sortedPlaces = sortPlaces(allPlaces, sortBy, { lat: mapCenter.lat, lon: mapCenter.lng });
+        
+        placeGroups = sortedPlaces.map((place, index) => ({
+            id: index,
+            places: [place],
+            centerLat: place.lat,
+            centerLon: place.lon,
+            name: place.name || 'Location'
+        }));
+        
+        displayResults(allPlaces, placeGroups);
+    }
+});
+
+// Tool navigation
+document.querySelectorAll('.tool-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const tool = btn.getAttribute('data-tool');
+        switchTool(tool);
+    });
+});
+
+function switchTool(tool) {
+    currentTool = tool;
+    
+    // Update active state
+    document.querySelectorAll('.tool-btn').forEach(btn => {
+        if (btn.getAttribute('data-tool') === tool) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+    
+    // Show/hide tool content
+    const sidebar = document.getElementById('sidebar');
+    const mainContent = document.querySelector('.main-content');
+    
+    if (tool === 'search') {
+        sidebar.style.display = 'flex';
+        mainContent.style.display = 'block';
+    } else {
+        // For future tools, hide search interface
+        sidebar.style.display = 'none';
+        mainContent.style.display = 'block';
+    }
+    
+    lucide.createIcons();
+}
 
 // Update radius preview when radius changes
 document.getElementById('radiusInputField').addEventListener('input', (e) => {

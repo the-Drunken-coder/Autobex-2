@@ -12,6 +12,20 @@
     <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 <body class="dark-theme">
+    <div class="topbar">
+        <div class="topbar-content">
+            <div class="topbar-logo">
+                <i data-lucide="map-pin"></i>
+                <h1>AutoBex 2</h1>
+            </div>
+            <nav class="tool-nav">
+                <button class="tool-btn active" data-tool="search">
+                    <i data-lucide="search"></i>
+                    <span>Search</span>
+                </button>
+            </nav>
+        </div>
+    </div>
     <div class="app-container">
         <aside class="sidebar" id="sidebar">
             <header class="sidebar-header">
@@ -65,16 +79,238 @@
                         </div>
                     </div>
                     
-                    <div class="filter-options">
+                    <div class="filter-section">
+                        <button type="button" class="filter-header" id="filterToggle">
+                            <span>Filters</span>
+                            <i data-lucide="chevron-down" id="filterIcon"></i>
+                        </button>
+                        <div class="filter-content" id="filterContent">
+                            <!-- Basic Status -->
+                            <div class="filter-group">
+                                <div class="filter-group-header-row">
+                                    <button type="button" class="filter-group-header" data-group="basic">
+                                        <i data-lucide="chevron-down"></i>
+                                        <span>Basic Status</span>
+                                    </button>
+                                    <label class="checkbox-container group-checkbox">
+                                        <input type="checkbox" id="group-basic" checked data-group="basic">
+                                        <span class="checkmark"></span>
+                                    </label>
+                                </div>
+                                <div class="filter-group-content" data-group-content="basic">
+                                    <label class="checkbox-container">
+                                        <input type="checkbox" id="filter-abandoned" checked data-group="basic">
+                                        <span class="checkmark"></span>
+                                        <span>Abandoned</span>
+                                    </label>
+                                    <label class="checkbox-container">
+                                        <input type="checkbox" id="filter-disused" checked data-group="basic">
+                                        <span class="checkmark"></span>
+                                        <span>Disused</span>
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <!-- Ruins -->
+                            <div class="filter-group">
+                                <div class="filter-group-header-row">
+                                    <button type="button" class="filter-group-header" data-group="ruins">
+                                        <i data-lucide="chevron-down"></i>
+                                        <span>Ruins</span>
+                                    </button>
+                                    <label class="checkbox-container group-checkbox">
+                                        <input type="checkbox" id="group-ruins" checked data-group="ruins">
+                                        <span class="checkmark"></span>
+                                    </label>
+                                </div>
+                                <div class="filter-group-content" data-group-content="ruins">
+                                    <label class="checkbox-container">
+                                        <input type="checkbox" id="filter-ruins-yes" checked data-group="ruins">
+                                        <span class="checkmark"></span>
+                                        <span>ruins=yes</span>
+                                    </label>
+                                    <label class="checkbox-container">
+                                        <input type="checkbox" id="filter-historic-ruins" checked data-group="ruins">
+                                        <span class="checkmark"></span>
+                                        <span>historic=ruins</span>
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <!-- Buildings -->
+                            <div class="filter-group">
+                                <div class="filter-group-header-row">
+                                    <button type="button" class="filter-group-header" data-group="buildings">
+                                        <i data-lucide="chevron-down"></i>
+                                        <span>Buildings</span>
+                                    </button>
+                                    <label class="checkbox-container group-checkbox">
+                                        <input type="checkbox" id="group-buildings" checked data-group="buildings">
+                                        <span class="checkmark"></span>
+                                    </label>
+                                </div>
+                                <div class="filter-group-content" data-group-content="buildings">
+                                    <label class="checkbox-container">
+                                        <input type="checkbox" id="filter-building-condition-ruinous" checked data-group="buildings">
+                                        <span class="checkmark"></span>
+                                        <span>building:condition=ruinous</span>
+                                    </label>
+                                    <label class="checkbox-container">
+                                        <input type="checkbox" id="filter-building-ruins" checked data-group="buildings">
+                                        <span class="checkmark"></span>
+                                        <span>building=ruins</span>
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <!-- Amenities -->
+                            <div class="filter-group">
+                                <div class="filter-group-header-row">
+                                    <button type="button" class="filter-group-header" data-group="amenities">
+                                        <i data-lucide="chevron-down"></i>
+                                        <span>Amenities</span>
+                                    </button>
+                                    <label class="checkbox-container group-checkbox">
+                                        <input type="checkbox" id="group-amenities" checked data-group="amenities">
+                                        <span class="checkmark"></span>
+                                    </label>
+                                </div>
+                                <div class="filter-group-content" data-group-content="amenities">
+                                    <label class="checkbox-container">
+                                        <input type="checkbox" id="filter-disused-amenity" checked data-group="amenities">
+                                        <span class="checkmark"></span>
+                                        <span>disused:amenity=*</span>
+                                    </label>
+                                    <label class="checkbox-container">
+                                        <input type="checkbox" id="filter-abandoned-amenity" checked data-group="amenities">
+                                        <span class="checkmark"></span>
+                                        <span>abandoned:amenity=*</span>
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <!-- Shops -->
+                            <div class="filter-group">
+                                <div class="filter-group-header-row">
+                                    <button type="button" class="filter-group-header" data-group="shops">
+                                        <i data-lucide="chevron-down"></i>
+                                        <span>Shops</span>
+                                    </button>
+                                    <label class="checkbox-container group-checkbox">
+                                        <input type="checkbox" id="group-shops" checked data-group="shops">
+                                        <span class="checkmark"></span>
+                                    </label>
+                                </div>
+                                <div class="filter-group-content" data-group-content="shops">
+                                    <label class="checkbox-container">
+                                        <input type="checkbox" id="filter-disused-shop" checked data-group="shops">
+                                        <span class="checkmark"></span>
+                                        <span>disused:shop=*</span>
+                                    </label>
+                                    <label class="checkbox-container">
+                                        <input type="checkbox" id="filter-abandoned-shop" checked data-group="shops">
+                                        <span class="checkmark"></span>
+                                        <span>abandoned:shop=*</span>
+                                    </label>
+                                    <label class="checkbox-container">
+                                        <input type="checkbox" id="filter-shop-vacant" checked data-group="shops">
+                                        <span class="checkmark"></span>
+                                        <span>shop=vacant</span>
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <!-- Land Use -->
+                            <div class="filter-group">
+                                <div class="filter-group-header-row">
+                                    <button type="button" class="filter-group-header" data-group="landuse">
+                                        <i data-lucide="chevron-down"></i>
+                                        <span>Land Use</span>
+                                    </button>
+                                    <label class="checkbox-container group-checkbox">
+                                        <input type="checkbox" id="group-landuse" checked data-group="landuse">
+                                        <span class="checkmark"></span>
+                                    </label>
+                                </div>
+                                <div class="filter-group-content" data-group-content="landuse">
+                                    <label class="checkbox-container">
+                                        <input type="checkbox" id="filter-landuse-brownfield" checked data-group="landuse">
+                                        <span class="checkmark"></span>
+                                        <span>landuse=brownfield</span>
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <!-- Aeroways -->
+                            <div class="filter-group">
+                                <div class="filter-group-header-row">
+                                    <button type="button" class="filter-group-header" data-group="aeroways">
+                                        <i data-lucide="chevron-down"></i>
+                                        <span>Aeroways</span>
+                                    </button>
+                                    <label class="checkbox-container group-checkbox">
+                                        <input type="checkbox" id="group-aeroways" checked data-group="aeroways">
+                                        <span class="checkmark"></span>
+                                    </label>
+                                </div>
+                                <div class="filter-group-content" data-group-content="aeroways">
+                                    <label class="checkbox-container">
+                                        <input type="checkbox" id="filter-disused-aeroway" checked data-group="aeroways">
+                                        <span class="checkmark"></span>
+                                        <span>disused:aeroway=*</span>
+                                    </label>
+                                    <label class="checkbox-container">
+                                        <input type="checkbox" id="filter-abandoned-aeroway" checked data-group="aeroways">
+                                        <span class="checkmark"></span>
+                                        <span>abandoned:aeroway=*</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- Railways (heavy) -->
+                            <div class="filter-group">
+                                <div class="filter-group-header-row">
+                                    <button type="button" class="filter-group-header" data-group="railways">
+                                        <i data-lucide="chevron-down"></i>
+                                        <span>Railways</span>
+                                    </button>
+                                    <label class="checkbox-container group-checkbox">
+                                        <input type="checkbox" id="group-railways" data-group="railways">
+                                        <span class="checkmark"></span>
+                                    </label>
+                                </div>
+                                <div class="filter-group-content" data-group-content="railways">
+                                    <div class="filter-note warning">⚠️ Enabling railways can return a lot of places.</div>
+                                    <label class="checkbox-container">
+                                        <input type="checkbox" id="filter-railway-abandoned" data-group="railways">
+                                        <span class="checkmark"></span>
+                                        <span>railway=abandoned</span>
+                                    </label>
+                                    <label class="checkbox-container">
+                                        <input type="checkbox" id="filter-railway-disused" data-group="railways">
+                                        <span class="checkmark"></span>
+                                        <span>railway=disused</span>
+                                    </label>
+                                    <label class="checkbox-container">
+                                        <input type="checkbox" id="filter-disused-railway-station" data-group="railways">
+                                        <span class="checkmark"></span>
+                                        <span>disused:railway=station</span>
+                                    </label>
+                                    <label class="checkbox-container">
+                                        <input type="checkbox" id="filter-abandoned-railway-station" data-group="railways">
+                                        <span class="checkmark"></span>
+                                        <span>abandoned:railway=station</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="grouping-toggle-section">
                         <label class="checkbox-container">
-                            <input type="checkbox" id="includeRuins" checked>
+                            <input type="checkbox" id="enableGrouping" checked>
                             <span class="checkmark"></span>
-                            Ruins
-                        </label>
-                        <label class="checkbox-container">
-                            <input type="checkbox" id="includeDisused" checked>
-                            <span class="checkmark"></span>
-                            Disused
+                            <span>Group nearby places</span>
                         </label>
                     </div>
                     
@@ -101,7 +337,7 @@
                     <label for="basemapSelect">Map Style:</label>
                     <select id="basemapSelect" class="basemap-selector">
                         <option value="light">OpenStreetMap</option>
-                        <option value="google">Google Maps</option>
+                        <option value="google">Google Maps Satellite</option>
                         <option value="bing">Bing Maps Satellite</option>
                         <option value="esri">Esri World Imagery</option>
                     </select>
@@ -111,6 +347,15 @@
                     <div class="results-header">
                         <h2>Results</h2>
                         <span id="resultCount" class="badge">0</span>
+                    </div>
+                    <div class="sort-section" id="sortSection" style="display: none;">
+                        <label for="sortSelect" class="sort-label">Sort by:</label>
+                        <select id="sortSelect" class="sort-selector">
+                            <option value="name">Name (A-Z)</option>
+                            <option value="name-desc">Name (Z-A)</option>
+                            <option value="type">Type</option>
+                            <option value="distance">Distance</option>
+                        </select>
                     </div>
                     <div id="resultList" class="result-list">
                         <div class="empty-state">

@@ -3,10 +3,30 @@ export async function onRequestGet(context) {
     const url = new URL(request.url);
     
     const type = url.searchParams.get('type');
-    const includeRuins = url.searchParams.get('includeRuins') !== 'false';
-    const includeDisused = url.searchParams.get('includeDisused') !== 'false';
     
-    console.log('🔍 [AutoBex 2 API] Request received:', { type, includeRuins, includeDisused });
+    // Get all filter parameters
+    const filters = {
+        abandoned: url.searchParams.get('abandoned') !== 'false',
+        disused: url.searchParams.get('disused') !== 'false',
+        ruinsYes: url.searchParams.get('ruinsYes') !== 'false',
+        historicRuins: url.searchParams.get('historicRuins') !== 'false',
+        railwayAbandoned: url.searchParams.get('railwayAbandoned') !== 'false',
+        railwayDisused: url.searchParams.get('railwayDisused') !== 'false',
+        disusedRailwayStation: url.searchParams.get('disusedRailwayStation') !== 'false',
+        abandonedRailwayStation: url.searchParams.get('abandonedRailwayStation') !== 'false',
+        buildingConditionRuinous: url.searchParams.get('buildingConditionRuinous') !== 'false',
+        buildingRuins: url.searchParams.get('buildingRuins') !== 'false',
+        disusedAmenity: url.searchParams.get('disusedAmenity') !== 'false',
+        abandonedAmenity: url.searchParams.get('abandonedAmenity') !== 'false',
+        disusedShop: url.searchParams.get('disusedShop') !== 'false',
+        abandonedShop: url.searchParams.get('abandonedShop') !== 'false',
+        shopVacant: url.searchParams.get('shopVacant') !== 'false',
+        landuseBrownfield: url.searchParams.get('landuseBrownfield') !== 'false',
+        disusedAeroway: url.searchParams.get('disusedAeroway') !== 'false',
+        abandonedAeroway: url.searchParams.get('abandonedAeroway') !== 'false'
+    };
+    
+    console.log('🔍 [AutoBex 2 API] Request received:', { type, filters });
     
     // Validate search type
     if (!type || !['city', 'radius', 'polygon'].includes(type)) {
@@ -70,7 +90,7 @@ export async function onRequestGet(context) {
                 });
             }
             
-            bbox = geocodeData[0].boundingbox; // [min_lat, max_lat, min_lon, max_lon]
+            bbox = geocodeData[0].boundingbox.map(parseFloat); // [min_lat, max_lat, min_lon, max_lon] - convert to numbers
             searchArea = { bbox: bbox };
             console.log(`✅ [Geocoding] Found area in ${geocodeDuration}ms, bbox:`, bbox);
             
@@ -202,58 +222,118 @@ export async function onRequestGet(context) {
             console.log(`✅ [Polygon] Parsed ${polygonCoords.length} points`);
         }
         
-        // Build Overpass API query
-        console.log('🔨 [Overpass] Building query...');
-        let query = '[out:json][timeout:25];\n(\n';
+        // Build Overpass API query with comprehensive tag coverage
+        console.log('🔨 [Overpass] Building comprehensive query...');
+        let query = '[out:json][timeout:60];\n(\n';
+        
+        // Helper function to add query lines for bbox
+        const addBboxQueries = (tags, south, west, north, east) => {
+            let q = '';
+            tags.forEach(tag => {
+                q += `  node[${tag}](${south},${west},${north},${east});\n`;
+                q += `  way[${tag}](${south},${west},${north},${east});\n`;
+                q += `  relation[${tag}](${south},${west},${north},${east});\n`;
+            });
+            return q;
+        };
+        
+        // Helper function to add query lines for polygon
+        const addPolygonQueries = (tags, polygonStr) => {
+            let q = '';
+            tags.forEach(tag => {
+                q += `  node[${tag}](poly:"${polygonStr}");\n`;
+                q += `  way[${tag}](poly:"${polygonStr}");\n`;
+                q += `  relation[${tag}](poly:"${polygonStr}");\n`;
+            });
+            return q;
+        };
+        
+        // Build tag list based on filter selections
+        const allTags = [];
+        
+        // Basic Status
+        if (filters.abandoned) allTags.push('"abandoned"="yes"');
+        if (filters.disused) allTags.push('"disused"="yes"');
+        
+        // Ruins
+        if (filters.ruinsYes) allTags.push('"ruins"="yes"');
+        if (filters.historicRuins) allTags.push('"historic"="ruins"');
+        
+        // Railways
+        if (filters.railwayAbandoned) allTags.push('"railway"="abandoned"');
+        if (filters.railwayDisused) allTags.push('"railway"="disused"');
+        if (filters.disusedRailwayStation) allTags.push('"disused:railway"="station"');
+        if (filters.abandonedRailwayStation) allTags.push('"abandoned:railway"="station"');
+        
+        // Buildings
+        if (filters.buildingConditionRuinous) allTags.push('"building:condition"~"^(ruinous|partly_ruinous|mainly_ruinous|completely_ruinous)$"');
+        if (filters.buildingRuins) allTags.push('"building"="ruins"');
+        
+        // Amenities - use regex to match any value
+        if (filters.disusedAmenity) allTags.push('"disused:amenity"~"."');
+        if (filters.abandonedAmenity) allTags.push('"abandoned:amenity"~"."');
+        
+        // Shops - use regex to match any value
+        if (filters.disusedShop) allTags.push('"disused:shop"~"."');
+        if (filters.abandonedShop) allTags.push('"abandoned:shop"~"."');
+        if (filters.shopVacant) allTags.push('"shop"="vacant"');
+        
+        // Land Use
+        if (filters.landuseBrownfield) allTags.push('"landuse"="brownfield"');
+        
+        // Aeroways - use regex to match any value
+        if (filters.disusedAeroway) allTags.push('"disused:aeroway"~"."');
+        if (filters.abandonedAeroway) allTags.push('"abandoned:aeroway"~"."');
+        
+        // Check if we have any tags to query
+        if (allTags.length === 0) {
+            console.error('❌ [Overpass] No tags selected for query');
+            return new Response(JSON.stringify({ 
+                error: 'No filters selected. Please select at least one filter option.',
+                places: []
+            }), {
+                status: 400,
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                }
+            });
+        }
         
         if (bbox) {
-            const south = bbox[0];
-            const north = bbox[1];
-            const west = bbox[2];
-            const east = bbox[3];
+            // Nominatim bbox format: [min_lat, max_lat, min_lon, max_lon]
+            // Overpass expects: (south, west, north, east)
+            const south = parseFloat(bbox[0]);
+            const north = parseFloat(bbox[1]);
+            const west = parseFloat(bbox[2]);
+            const east = parseFloat(bbox[3]);
             
-            // Abandoned buildings
-            query += `  way["abandoned"="yes"]["building"](${south},${west},${north},${east});\n`;
-            query += `  relation["abandoned"="yes"]["building"](${south},${west},${north},${east});\n`;
-            
-            // Disused buildings
-            if (includeDisused) {
-                query += `  way["disused"="yes"]["building"](${south},${west},${north},${east});\n`;
-                query += `  relation["disused"="yes"]["building"](${south},${west},${north},${east});\n`;
-            }
-            
-            // Ruins
-            if (includeRuins) {
-                query += `  way["ruins"="yes"](${south},${west},${north},${east});\n`;
-                query += `  way["historic"="ruins"](${south},${west},${north},${east});\n`;
-                query += `  node["ruins"="yes"](${south},${west},${north},${east});\n`;
-                query += `  node["historic"="ruins"](${south},${west},${north},${east});\n`;
-            }
+            console.log('📍 [Overpass] Bbox values:', { south, west, north, east });
+            query += addBboxQueries(allTags, south, west, north, east);
         } else if (polygonCoords) {
-            // Build polygon string for Overpass
             const polygonStr = polygonCoords.map(c => `${c.lat} ${c.lon}`).join(' ');
-            
-            query += `  way["abandoned"="yes"]["building"](poly:"${polygonStr}");\n`;
-            query += `  relation["abandoned"="yes"]["building"](poly:"${polygonStr}");\n`;
-            
-            if (includeDisused) {
-                query += `  way["disused"="yes"]["building"](poly:"${polygonStr}");\n`;
-                query += `  relation["disused"="yes"]["building"](poly:"${polygonStr}");\n`;
-            }
-            
-            if (includeRuins) {
-                query += `  way["ruins"="yes"](poly:"${polygonStr}");\n`;
-                query += `  way["historic"="ruins"](poly:"${polygonStr}");\n`;
-                query += `  node["ruins"="yes"](poly:"${polygonStr}");\n`;
-                query += `  node["historic"="ruins"](poly:"${polygonStr}");\n`;
-            }
+            query += addPolygonQueries(allTags, polygonStr);
+        } else {
+            console.error('❌ [Overpass] No search area defined');
+            return new Response(JSON.stringify({ 
+                error: 'No search area defined',
+                places: []
+            }), {
+                status: 400,
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                }
+            });
         }
         
         query += ');\n';
         query += 'out center meta;';
         
         console.log('📝 [Overpass] Query built, length:', query.length, 'chars');
-        console.log('📋 [Overpass] Query filters:', { includeRuins, includeDisused });
+        console.log('📋 [Overpass] Query filters:', filters);
+        console.log('📋 [Overpass] Active tags:', allTags.length);
+        console.log('📋 [Overpass] Full query:', query);
         
         // Query Overpass API
         const overpassUrl = 'https://overpass-api.de/api/interpreter';
@@ -271,7 +351,10 @@ export async function onRequestGet(context) {
         const overpassDuration = Date.now() - overpassStartTime;
         
         if (!overpassResponse.ok) {
+            const errorText = await overpassResponse.text();
             console.error('❌ [Overpass] API error:', overpassResponse.status, overpassResponse.statusText);
+            console.error('❌ [Overpass] Error response:', errorText);
+            console.error('❌ [Overpass] Full query:', query);
             throw new Error(`Overpass API error: ${overpassResponse.statusText}`);
         }
         
@@ -289,12 +372,23 @@ export async function onRequestGet(context) {
         if (overpassData.elements) {
             let processed = 0;
             let skipped = 0;
+            let filtered = 0;
             
             overpassData.elements.forEach((element, index) => {
                 if (seenIds.has(element.id)) {
                     skipped++;
                     return;
                 }
+                
+                // Filter out tourist attractions and memorials to reduce false positives
+                if (element.tags && (
+                    element.tags.tourism === 'attraction' ||
+                    element.tags.historic === 'memorial'
+                )) {
+                    filtered++;
+                    return;
+                }
+                
                 seenIds.add(element.id);
                 
                 // Get coordinates
@@ -367,7 +461,7 @@ export async function onRequestGet(context) {
                 }
             });
             
-            console.log(`✅ [Processing] Processed ${processed} places, skipped ${skipped} duplicates/invalid`);
+            console.log(`✅ [Processing] Processed ${processed} places, skipped ${skipped} duplicates/invalid, filtered ${filtered} tourist/memorial sites`);
         }
         
         const totalDuration = Date.now() - requestStartTime;
