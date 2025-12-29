@@ -1,0 +1,12 @@
+{
+  "name": "autobex-2",
+  "version": "1.0.0",
+  "description": "AutoBex 2 - Find abandoned places using OpenStreetMap data",
+  "scripts": {
+    "dev": "wrangler pages dev public",
+    "deploy": "wrangler pages deploy public"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}

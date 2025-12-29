@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AutoBex 2 - Abandoned Places Finder</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+    <link rel="stylesheet" href="styles.css" />
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="dark-theme">
+    <div class="app-container">
+        <aside class="sidebar" id="sidebar">
+            <header class="sidebar-header">
+                <div class="logo">
+                    <i data-lucide="map-pin"></i>
+                    <h1>AutoBex 2</h1>
+                </div>
+                <button id="toggleSidebar" class="icon-btn" title="Toggle Sidebar">
+                    <i data-lucide="chevron-left"></i>
+                </button>
+            </header>
+
+            <div class="sidebar-content">
+                <section class="search-section">
+                    <div class="search-type-selector">
+                        <select id="searchType">
+                            <option value="city">City / Place Name</option>
+                            <option value="radius">Coordinates + Radius</option>
+                            <option value="polygon">Custom Polygon</option>
+                        </select>
+                    </div>
+                    
+                    <div id="cityInput" class="input-group">
+                        <input type="text" id="areaInput" placeholder="e.g. Detroit, MI" autocomplete="off" />
+                    </div>
+                    
+                    <div id="radiusInput" class="input-group" style="display: none;">
+                        <div class="input-grid">
+                            <input type="number" id="latInput" placeholder="Latitude" step="any" />
+                            <input type="number" id="lonInput" placeholder="Longitude" step="any" />
+                            <input type="number" id="radiusInputField" placeholder="Radius (km)" min="0.1" step="0.1" />
+                        </div>
+                        <div class="click-hint">
+                            <i data-lucide="mouse-pointer-click"></i>
+                            <span>Click on the map to set center point</span>
+                        </div>
+                    </div>
+                    
+                    <div id="polygonInput" class="input-group" style="display: none;">
+                        <div class="polygon-controls">
+                            <button type="button" id="clearPolygonBtn" class="secondary-btn">
+                                <i data-lucide="trash-2"></i>
+                                Clear Points
+                            </button>
+                            <span id="polygonPointCount" class="point-counter">0 points</span>
+                        </div>
+                        <textarea id="polygonTextarea" placeholder="Click on the map to add points, or enter coordinates manually&#10;lat,lon&#10;lat,lon&#10;..."></textarea>
+                        <div class="click-hint">
+                            <i data-lucide="mouse-pointer-click"></i>
+                            <span>Click on the map to add polygon points</span>
+                        </div>
+                    </div>
+                    
+                    <div class="filter-options">
+                        <label class="checkbox-container">
+                            <input type="checkbox" id="includeRuins" checked>
+                            <span class="checkmark"></span>
+                            Ruins
+                        </label>
+                        <label class="checkbox-container">
+                            <input type="checkbox" id="includeDisused" checked>
+                            <span class="checkmark"></span>
+                            Disused
+                        </label>
+                    </div>
+                    
+                    <button id="searchBtn" class="primary-btn">
+                        <i data-lucide="search"></i>
+                        Find Places
+                    </button>
+                </section>
+
+                <div id="status"></div>
+                
+                <div id="progressContainer" class="progress-container" style="display: none;">
+                    <div class="progress-header">
+                        <span id="progressText">Preparing search...</span>
+                        <span id="progressPercent">0%</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div id="progressBar" class="progress-bar-fill"></div>
+                    </div>
+                    <div id="progressSteps" class="progress-steps"></div>
+                </div>
+
+                <section class="basemap-section">
+                    <label for="basemapSelect">Map Style:</label>
+                    <select id="basemapSelect" class="basemap-selector">
+                        <option value="light">OpenStreetMap</option>
+                        <option value="google">Google Maps</option>
+                        <option value="bing">Bing Maps Satellite</option>
+                        <option value="esri">Esri World Imagery</option>
+                    </select>
+                </section>
+
+                <section class="results-section">
+                    <div class="results-header">
+                        <h2>Results</h2>
+                        <span id="resultCount" class="badge">0</span>
+                    </div>
+                    <div id="resultList" class="result-list">
+                        <div class="empty-state">
+                            <i data-lucide="search" size="40"></i>
+                            <p>Enter an area to start exploring</p>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <div id="map"></div>
+            <button id="openSidebar" class="floating-btn" style="display: none;">
+                <i data-lucide="menu"></i>
+            </button>
+        </main>
+    </div>
+    
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
