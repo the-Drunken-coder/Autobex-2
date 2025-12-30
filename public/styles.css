@@ -1409,7 +1409,7 @@ textarea {
     .floating-btn {
         display: flex !important;
     }
-    
+
     .input-grid {
         grid-template-columns: 1fr;
     }
@@ -1417,4 +1417,138 @@ textarea {
     .input-grid input:last-child {
         grid-column: span 1;
     }
+}
+
+/* Analyze enhancements */
+.analyze-map {
+    width: 100%;
+    height: 320px;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 12px;
+    border: 1px solid var(--bg-accent);
+}
+
+.route-summary {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+}
+
+.route-steps .route-block {
+    background: var(--bg-primary);
+    border: 1px solid var(--bg-accent);
+    border-radius: 8px;
+    padding: 10px;
+    margin-bottom: 10px;
+}
+
+.route-block .route-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+}
+
+.route-block ol {
+    margin-left: 16px;
+    color: var(--text-secondary);
+    display: grid;
+    gap: 4px;
+}
+
+.imagery-controls {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+}
+
+.imagery-controls label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-secondary);
+}
+
+.news-cards {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    margin-bottom: 12px;
+}
+
+.news-card {
+    border: 1px solid var(--bg-accent);
+    border-radius: 10px;
+    padding: 12px;
+    background: var(--bg-primary);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.news-card h4 {
+    margin: 0;
+    color: var(--text-primary);
+}
+
+.news-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.timeline {
+    display: grid;
+    gap: 10px;
+    margin: 10px 0;
+}
+
+.timeline-item {
+    display: grid;
+    grid-template-columns: 16px 1fr;
+    gap: 10px;
+    align-items: start;
+}
+
+.timeline-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--accent-color);
+    margin-top: 4px;
+}
+
+.timeline-title {
+    font-weight: 700;
+}
+
+.timeline-meta {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.tag-change {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.badge.green {
+    background: rgba(34, 197, 94, 0.15);
+    color: #bbf7d0;
+    border: 1px solid rgba(34, 197, 94, 0.4);
+}
+
+.badge.blue {
+    background: rgba(59, 130, 246, 0.15);
+    color: #bfdbfe;
+    border: 1px solid rgba(59, 130, 246, 0.4);
+}
+
+.muted {
+    color: var(--text-secondary);
 }

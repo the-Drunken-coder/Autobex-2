@@ -10,6 +10,9 @@ let currentBasemap = null;
 let basemapLayers = {};
 let placeGroups = [];
 let currentTool = 'search';
+let analyzeMap = null;
+let analyzeLayers = { base: null, historical: null };
+let analyzeRouteLayers = [];
 
 // Bing Maps tile layer with quadkey conversion
 const BingMapsLayer = L.TileLayer.extend({
@@ -1686,6 +1689,178 @@ async function analyzeLocation() {
     }
 }
 
+function clearAnalyzeMap() {
+    if (analyzeMap) {
+        analyzeMap.off();
+        analyzeMap.remove();
+        analyzeMap = null;
+    }
+    analyzeLayers = { base: null, historical: null };
+    analyzeRouteLayers = [];
+}
+
+function initAnalyzeMap(lat, lon) {
+    clearAnalyzeMap();
+    const container = document.getElementById('analyzeMap');
+    if (!container) return;
+    analyzeMap = L.map(container, { zoomControl: true });
+    analyzeLayers.base = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 20
+    }).addTo(analyzeMap);
+    analyzeMap.setView([lat, lon], 16);
+    setTimeout(() => analyzeMap && analyzeMap.invalidateSize(), 100);
+}
+
+function addAnalyzeRoutes(routing, origin) {
+    analyzeRouteLayers.forEach(layer => layer.remove());
+    analyzeRouteLayers = [];
+    if (!routing || !analyzeMap) return;
+
+    const addRoute = (route, color, label) => {
+        if (!route || !route.geometry || !route.geometry.coordinates) return;
+        const latLngs = route.geometry.coordinates.map(coord => [coord[1], coord[0]]);
+        const polyline = L.polyline(latLngs, { color, weight: 5, opacity: 0.8 }).addTo(analyzeMap);
+        polyline.bindTooltip(`${label}: ${(route.distance / 1000).toFixed(2)} km`, { sticky: true });
+        analyzeRouteLayers.push(polyline);
+        return latLngs;
+    };
+
+    addRoute(routing.parkingRoute, '#22c55e', 'Parking route');
+    addRoute(routing.roadRoute, '#3b82f6', 'Road route');
+
+    if (routing.accessLines && routing.accessLines.length > 0) {
+        routing.accessLines.forEach(line => {
+            const polyline = L.polyline([[line.from.lat, line.from.lon], [line.to.lat, line.to.lon]], {
+                color: '#f59e0b',
+                dashArray: '6,4',
+                weight: 3,
+                opacity: 0.7
+            }).addTo(analyzeMap);
+            polyline.bindTooltip(`${line.label} (${(line.distance / 1000).toFixed(2)} km)`, { sticky: true });
+            analyzeRouteLayers.push(polyline);
+        });
+    }
+
+    // Keep origin marker on top
+    if (origin && isFinite(origin.lat) && isFinite(origin.lon)) {
+        const marker = L.circleMarker([origin.lat, origin.lon], {
+            radius: 8,
+            color: '#ef4444',
+            fillColor: '#ef4444',
+            fillOpacity: 0.9
+        }).addTo(analyzeMap);
+        marker.bindTooltip('Target location', { permanent: false });
+        analyzeRouteLayers.push(marker);
+    }
+}
+
+function renderRouteSteps(routing) {
+    const stepsContainer = document.getElementById('routeSteps');
+    const summaryContainer = document.getElementById('routeSummary');
+    if (!stepsContainer || !summaryContainer) return;
+
+    const buildList = (route, title) => {
+        if (!route) return '';
+        const durationMinutes = route.duration ? Math.round(route.duration / 60) : null;
+        if (route.isFallback) {
+            return `
+            <div class="route-block">
+                <div class="route-heading">
+                    <strong>${title}</strong>
+                    <span>${escapeHtml(route.summary || 'Direct line')}</span>
+                    <small>${(route.distance / 1000).toFixed(2)} km</small>
+                </div>
+                <p class="muted">Routing unavailable; showing straight-line distance.</p>
+            </div>
+            `;
+        }
+        return `
+            <div class="route-block">
+                <div class="route-heading">
+                    <strong>${title}</strong>
+                    <span>${escapeHtml(route.summary || '')}</span>
+                    <small>${(route.distance / 1000).toFixed(2)} km ${durationMinutes ? `• ${durationMinutes} min` : ''}</small>
+                </div>
+                <ol>
+                    ${(route.steps || []).map(step => `<li>${escapeHtml(step.instruction || 'Continue')} <span class="muted">(${(step.distance / 1000).toFixed(2)} km)</span></li>`).join('')}
+                </ol>
+            </div>
+        `;
+    };
+
+    summaryContainer.innerHTML = `
+        ${routing?.parkingRoute ? `<div class="badge green">Parking ${(routing.parkingRoute.distance / 1000).toFixed(2)} km</div>` : ''}
+        ${routing?.roadRoute ? `<div class="badge blue">Road ${(routing.roadRoute.distance / 1000).toFixed(2)} km</div>` : ''}
+    `;
+
+    stepsContainer.innerHTML = `
+        ${buildList(routing?.parkingRoute, 'To nearest parking')}
+        ${buildList(routing?.roadRoute, 'To nearest road')}
+    `;
+}
+
+function setupImageryControls(imagery) {
+    const select = document.getElementById('imageryReleaseSelect');
+    const slider = document.getElementById('imageryBlend');
+    const sliderValue = document.getElementById('imageryBlendValue');
+    const status = document.getElementById('imageryStatus');
+
+    if (!select || !slider || !status || !imagery || !analyzeMap) return;
+
+    const releases = imagery.waybackReleases || [];
+    if (releases.length === 0) {
+        status.textContent = 'No Wayback imagery releases available for this location.';
+        return;
+    }
+    select.innerHTML = releases
+        .map(release => {
+            const safeId = escapeHtml(String(release.id ?? ''));
+            const safeLabel = escapeHtml(String(release.date ?? release.id ?? ''));
+            return `<option value="${safeId}">${safeLabel}</option>`;
+        })
+        .join('');
+
+    const updateLayer = () => {
+        const selectedId = select.value || (releases[0] && releases[0].id);
+        const selectedRelease = releases.find(r => String(r.id) === selectedId) || releases[0];
+        if (!selectedRelease) return;
+
+        if (analyzeLayers.historical) {
+            analyzeMap.removeLayer(analyzeLayers.historical);
+            analyzeLayers.historical = null;
+        }
+
+        analyzeLayers.historical = L.tileLayer(selectedRelease.tileUrl || releases[0].tileUrl, {
+            attribution: '&copy; Esri Wayback Imagery',
+            maxZoom: 19,
+            opacity: (Number(slider.value) || 0) / 100
+        }).addTo(analyzeMap);
+
+        const releaseLabel = selectedRelease.date || selectedRelease.id;
+        const safeReleaseLabel = releaseLabel == null ? '' : String(releaseLabel);
+        status.textContent = `Showing Wayback release ${safeReleaseLabel}`;
+        if (sliderValue) {
+            sliderValue.textContent = `${slider.value}%`;
+        }
+    };
+
+    if (!select.dataset.bound) {
+        slider.addEventListener('input', () => {
+            if (analyzeLayers.historical) {
+                analyzeLayers.historical.setOpacity((Number(slider.value) || 0) / 100);
+            }
+            if (sliderValue) {
+                sliderValue.textContent = `${slider.value}%`;
+            }
+        });
+
+        select.addEventListener('change', updateLayer);
+        select.dataset.bound = 'true';
+    }
+    updateLayer();
+}
+
 function displayAnalyzeResults(data) {
     const analyzeResults = document.getElementById('analyzeResults');
     analyzeResults.style.display = 'block';
@@ -1750,6 +1925,26 @@ function displayAnalyzeResults(data) {
     
     html += `</div></div>`;
     
+    if (data.streetView) {
+        html += `
+            <div class="analyze-section">
+                <h2><i data-lucide="camera"></i>Street View</h2>
+                <div class="analyze-info-grid">
+                    ${data.streetView.google ? `
+                        <div class="analyze-info-item">
+                            <span class="analyze-info-label">Google</span>
+                            <span class="analyze-info-value"><a href="${data.streetView.google.url}" target="_blank" rel="noopener noreferrer">Open Street View</a></span>
+                        </div>` : ''}
+                    ${data.streetView.bing ? `
+                        <div class="analyze-info-item">
+                            <span class="analyze-info-label">Bing</span>
+                            <span class="analyze-info-value"><a href="${data.streetView.bing.url}" target="_blank" rel="noopener noreferrer">Open Streetside</a></span>
+                        </div>` : ''}
+                </div>
+            </div>
+        `;
+    }
+
     if (data.distanceAccess && (data.distanceAccess.nearestParking || data.distanceAccess.nearestRoad)) {
         html += `
             <div class="analyze-section">
@@ -1806,6 +2001,17 @@ function displayAnalyzeResults(data) {
         html += `</div>`;
     }
     
+    if (element.lat && element.lon) {
+        html += `
+            <div class="analyze-section">
+                <h2><i data-lucide="map"></i>Map & Directions</h2>
+                <div class="analyze-map" id="analyzeMap"></div>
+                <div id="routeSummary" class="route-summary"></div>
+                <div id="routeSteps" class="route-steps"></div>
+            </div>
+        `;
+    }
+
     // Name and Description
     if (element.name || element.description) {
         html += `
@@ -1876,6 +2082,18 @@ function displayAnalyzeResults(data) {
         html += `
             <div class="analyze-section">
                 <h2><i data-lucide="image"></i>Historical Imagery</h2>
+                <div class="imagery-controls">
+                    <label>Release
+                        <select id="imageryReleaseSelect">
+                            ${(data.imagery.waybackReleases || []).map(r => `<option value="${r.id}">${escapeHtml(r.date || r.id)}</option>`).join('')}
+                        </select>
+                    </label>
+                    <label>Blend
+                        <input type="range" id="imageryBlend" min="0" max="100" value="60" />
+                        <span id="imageryBlendValue">60%</span>
+                    </label>
+                </div>
+                <p class="muted" id="imageryStatus">Loading imagery…</p>
                 <div class="analyze-info-grid">
         `;
         if (data.imagery.current) {
@@ -1907,25 +2125,45 @@ function displayAnalyzeResults(data) {
         html += `
             <div class="analyze-section">
                 <h2><i data-lucide="newspaper"></i>News & Media</h2>
-                <div class="analyze-info-grid">
+                <div class="news-cards" id="newsCards">
         `;
-        const renderNewsList = (items, label) => items.map(item => `
-            <div class="analyze-info-item">
-                <span class="analyze-info-label">${label}</span>
-                <span class="analyze-info-value">
-                    <a href="${item.url}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title)}</a>
-                    <br/><small>${escapeHtml(item.source || '')}</small>
-                </span>
+        const sanitizeUrl = (url) => {
+            if (!url) return '#';
+            try {
+                const parsed = new URL(url, 'https://example.com');
+                if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+                    return parsed.href;
+                }
+            } catch (e) {
+                return '#';
+            }
+            return '#';
+        };
+        const combinedArticles = [
+            ...(data.news.articles?.current || []).map(a => ({ ...a, category: 'Recent' })),
+            ...(data.news.articles?.historical || []).map(a => ({ ...a, category: 'Historical' }))
+        ];
+        if (combinedArticles.length > 0) {
+            html += combinedArticles.map(article => `
+                <div class="news-card">
+                    <div class="news-card-header">
+                        <span class="badge">${escapeHtml(article.category)}</span>
+                        ${article.date ? `<small>${escapeHtml(article.date)}</small>` : ''}
+                    </div>
+                    <a href="${sanitizeUrl(article.url)}" target="_blank" rel="noopener noreferrer">
+                        <h4>${escapeHtml(article.title)}</h4>
+                    </a>
+                    ${article.snippet ? `<p>${escapeHtml(article.snippet)}</p>` : ''}
+                    <small class="muted">${escapeHtml(article.source || '')}</small>
+                </div>
+            `).join('');
+        } else {
+            html += `<p class="muted">No news articles found for this location.</p>`;
+        }
+        html += `
+                </div>
             </div>
-        `).join('');
-
-        if (data.news.current && data.news.current.length > 0) {
-            html += renderNewsList(data.news.current, 'Recent');
-        }
-        if (data.news.historical && data.news.historical.length > 0) {
-            html += renderNewsList(data.news.historical, 'Historical');
-        }
-        html += `</div></div>`;
+        `;
     }
 
     if (data.history) {
@@ -1982,13 +2220,36 @@ function displayAnalyzeResults(data) {
         if (data.history.history && data.history.history.length > 0) {
             const recentHistory = data.history.history.slice(-5);
             html += `
+                <div class="timeline">
+                    ${recentHistory.map(entry => `
+                        <div class="timeline-item">
+                            <div class="timeline-dot"></div>
+                            <div>
+                                <div class="timeline-title">v${entry.version || '?'}</div>
+                                <div class="timeline-meta">${escapeHtml(entry.timestamp || 'Unknown')} • ${escapeHtml(entry.user || 'Unknown')}</div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        if (data.history.changes && data.history.changes.length > 0) {
+            html += `
                 <div class="analyze-info-grid" style="grid-template-columns: 1fr;">
                     <div class="analyze-info-item">
-                        <span class="analyze-info-label">Recent Versions</span>
+                        <span class="analyze-info-label">Tag changes</span>
                         <span class="analyze-info-value">
                             <ul>
-                                ${recentHistory.map(entry => `
-                                    <li>v${entry.version || '?'} • ${escapeHtml(entry.timestamp || 'Unknown')} • ${escapeHtml(entry.user || 'Unknown')}</li>
+                                ${data.history.changes.slice(-5).map(change => `
+                                    <li>
+                                        <strong>v${change.version || '?'}</strong> • ${escapeHtml(change.timestamp || '')}
+                                        <div class="tag-change">
+                                            ${change.added.length ? `<div><em>Added:</em> ${change.added.map(a => `${escapeHtml(a.key)}=${escapeHtml(a.value)}`).join(', ')}</div>` : ''}
+                                            ${change.changed.length ? `<div><em>Updated:</em> ${change.changed.map(c => `${escapeHtml(c.key)} (${escapeHtml(c.from)}→${escapeHtml(c.to)})`).join(', ')}</div>` : ''}
+                                            ${change.removed.length ? `<div><em>Removed:</em> ${change.removed.map(r => `${escapeHtml(r.key)}=${escapeHtml(r.value)}`).join(', ')}</div>` : ''}
+                                        </div>
+                                    </li>
                                 `).join('')}
                             </ul>
                         </span>
@@ -2052,6 +2313,13 @@ function displayAnalyzeResults(data) {
     
     analyzeResults.innerHTML = html;
     lucide.createIcons();
+
+    if (element.lat && element.lon) {
+        initAnalyzeMap(element.lat, element.lon);
+        addAnalyzeRoutes(data.routing, { lat: element.lat, lon: element.lon });
+        renderRouteSteps(data.routing || {});
+        setupImageryControls(data.imagery);
+    }
 }
 
 function showAnalyzeError(message) {
