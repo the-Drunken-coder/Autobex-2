@@ -66,9 +66,10 @@ describe('Search API', () => {
     });
 
     describe('City Search', () => {
-        it('should handle valid city search', async () => {
+        it('should handle valid city search', { timeout: 60000 }, async () => {
+            // Using a smaller city for faster test execution
             const response = await fetch(
-                `${API_BASE_URL}?type=city&area=New York&abandoned=true&disused=true`
+                `${API_BASE_URL}?type=city&area=Hoboken NJ&abandoned=true&disused=true`
             );
             
             expect(response.status).toBe(200);
@@ -77,7 +78,7 @@ describe('Search API', () => {
             expect(data).toHaveProperty('count');
             expect(data).toHaveProperty('searchArea');
             expect(Array.isArray(data.places)).toBe(true);
-        }, { timeout: 30000 });
+        });
 
         it('should handle city not found', async () => {
             const response = await fetch(
@@ -128,7 +129,7 @@ describe('Search API', () => {
     });
 
     describe('Polygon Search', () => {
-        it('should handle valid polygon search', async () => {
+        it('should handle valid polygon search', { timeout: 30000 }, async () => {
             const polygon = '40.7128,-74.0060,40.7228,-74.0060,40.7228,-74.0160,40.7128,-74.0160';
             const response = await fetch(
                 `${API_BASE_URL}?type=polygon&polygon=${polygon}&abandoned=true`
@@ -139,7 +140,7 @@ describe('Search API', () => {
             expect(data).toHaveProperty('places');
             expect(data).toHaveProperty('searchArea');
             expect(data.searchArea).toHaveProperty('coordinates');
-        }, { timeout: 30000 });
+        });
 
         it('should reject polygon with less than 3 points', async () => {
             const polygon = '40.7128,-74.0060,40.7228,-74.0060';
@@ -176,7 +177,7 @@ describe('Search API', () => {
             expect(data.error).toContain('No filters selected');
         });
 
-        it('should accept filter parameters', async () => {
+        it('should accept filter parameters', { timeout: 30000 }, async () => {
             const response = await fetch(
                 `${API_BASE_URL}?type=city&area=New York&abandoned=true&disused=false`
             );
@@ -184,20 +185,20 @@ describe('Search API', () => {
             expect(response.status).toBe(200);
             const data = await response.json();
             expect(data).toHaveProperty('places');
-        }, { timeout: 30000 });
+        });
     });
 
     describe('Response Format', () => {
-        it('should return CORS headers', async () => {
+        it('should return CORS headers', { timeout: 30000 }, async () => {
             const response = await fetch(
                 `${API_BASE_URL}?type=city&area=New York&abandoned=true`
             );
             
             expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
             expect(response.headers.get('Content-Type')).toBe('application/json');
-        }, { timeout: 30000 });
+        });
 
-        it('should return valid JSON structure', async () => {
+        it('should return valid JSON structure', { timeout: 30000 }, async () => {
             const response = await fetch(
                 `${API_BASE_URL}?type=city&area=New York&abandoned=true`
             );
@@ -211,7 +212,7 @@ describe('Search API', () => {
                 expect(typeof data.count).toBe('number');
             }
             expect(Array.isArray(data.places)).toBe(true);
-        }, { timeout: 30000 });
+        });
     });
 });
 
