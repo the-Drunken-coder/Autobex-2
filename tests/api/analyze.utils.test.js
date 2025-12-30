@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { calculateDistanceMeters, parseOSMHistoryXml, summarizeHistory, buildImageryLinks, buildNewsLinks, buildStreetViewLinks, buildHistoryChanges, buildAccessLines, fetchRoute, fetchNewsArticles, fetchWaybackReleases, isValidCoordinates } from '../../functions/api/analyze.js';
+import { calculateDistanceMeters, parseOSMHistoryXml, summarizeHistory, buildImageryLinks, buildNewsLinks, buildStreetViewLinks, buildHistoryChanges, buildAccessLines, fetchRoute, fetchNewsArticles, fetchWaybackReleases, isValidCoordinates, buildRelatedMediaLinks, estimateVegetationOvergrowth, buildSatelliteComparison } from '../../functions/api/analyze.js';
 import { vi } from 'vitest';
 
 afterEach(() => {
@@ -148,6 +148,37 @@ describe('Analyze helpers', () => {
             expect(news.current[0].title).toBe('Test');
             expect(news.historical.length).toBeGreaterThan(0);
             expect(fetchMock).toHaveBeenCalledTimes(3);
+        });
+    });
+
+    describe('buildRelatedMediaLinks', () => {
+        it('returns link collections for multiple providers', () => {
+            const media = buildRelatedMediaLinks('Test Place', 10, 20, { 'addr:city': 'Test', 'addr:state': 'TS' });
+            expect(media.flickr[0].url).toContain('flickr.com');
+            expect(media.youtube[0].url).toContain('youtube.com');
+            expect(media.reddit.length).toBeGreaterThan(0);
+        });
+    });
+
+    describe('buildSatelliteComparison', () => {
+        it('maps available releases into comparison object', () => {
+            const comparison = buildSatelliteComparison({
+                current: { provider: 'Now', url: 'https://example.com/current' },
+                waybackReleases: [
+                    { id: '2020', date: '2020', tileUrl: 'https://tiles/2020/{z}/{x}/{y}' }
+                ]
+            });
+            expect(comparison.historical[0].provider).toBe('Esri Wayback');
+            expect(comparison.availableDates).toContain('2020');
+        });
+    });
+
+    describe('estimateVegetationOvergrowth', () => {
+        it('returns bounded coverage estimates', () => {
+            const veg = estimateVegetationOvergrowth(10, 20);
+            expect(veg.current.coverage).toBeGreaterThan(0);
+            expect(veg.current.coverage).toBeLessThanOrEqual(1);
+            expect(veg.historical.length).toBeGreaterThan(0);
         });
     });
 });
