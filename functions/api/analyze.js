@@ -204,11 +204,14 @@ function buildImageryLinks(lat, lon) {
 
 function buildNewsLinks(name, address, lat, lon) {
     const queryParts = [];
-    if (name) queryParts.push(name);
+    // Use quoted name for exact phrase match if available
+    if (name) {
+        queryParts.push(`"${name}"`);
+    }
     if (address?.['addr:city']) queryParts.push(address['addr:city']);
     if (address?.['addr:state']) queryParts.push(address['addr:state']);
-    if (isValidCoordinates(lat, lon)) queryParts.push(`${lat.toFixed(4)}, ${lon.toFixed(4)}`);
-    const fallbackQuery = isValidCoordinates(lat, lon) ? `${lat},${lon}` : 'abandoned location';
+    // Don't include coordinates - they're not useful for news searches
+    const fallbackQuery = name || (address ? `${address['addr:city'] || ''} ${address['addr:state'] || ''}`.trim() : '') || 'location';
     const query = encodeURIComponent(queryParts.join(' ').trim() || fallbackQuery);
 
     return {
@@ -236,20 +239,6 @@ function buildNewsLinks(name, address, lat, lon) {
                 url: `https://archive.org/search?query=${query}`
             }
         ]
-    };
-}
-
-function buildStreetViewLinks(lat, lon) {
-    if (!isValidCoordinates(lat, lon)) return null;
-    return {
-        google: {
-            provider: 'Google Street View',
-            url: `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lon}`
-        },
-        bing: {
-            provider: 'Bing Streetside',
-            url: `https://www.bing.com/maps?cp=${lat}~${lon}&style=x&lvl=19`
-        }
     };
 }
 
@@ -335,7 +324,7 @@ async function fetchNewsArticles(query) {
             if (typeof DOMParser !== 'undefined') {
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(xmlText, 'text/xml');
-                const items = Array.from(doc.querySelectorAll('item')).slice(0, 5);
+                const items = Array.from(doc.querySelectorAll('item')).slice(0, 3);
                 return items.map(item => ({
                     title: item.querySelector('title')?.textContent || 'Untitled',
                     url: item.querySelector('link')?.textContent || '#',
@@ -349,7 +338,7 @@ async function fetchNewsArticles(query) {
         const items = [];
         const itemRegex = /<item>([\s\S]*?)<\/item>/g;
         let match;
-        while ((match = itemRegex.exec(xmlText)) !== null && items.length < 5) {
+        while ((match = itemRegex.exec(xmlText)) !== null && items.length < 3) {
             const block = match[1];
             const titleMatch = block.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>|<title>(.*?)<\/title>/);
             const linkMatch = block.match(/<link>(.*?)<\/link>/);
@@ -383,11 +372,11 @@ async function fetchNewsArticles(query) {
     // Chronicling America (historical)
     tasks.push((async () => {
         try {
-            const chroniclingUrl = `https://chroniclingamerica.loc.gov/search/pages/results/?format=json&proxtext=${encodeURIComponent(query)}&rows=5`;
+            const chroniclingUrl = `https://chroniclingamerica.loc.gov/search/pages/results/?format=json&proxtext=${encodeURIComponent(query)}&rows=3`;
             const res = await fetch(chroniclingUrl, { headers: { 'Accept': 'application/json' } });
             if (res.ok) {
                 const json = await res.json();
-                const items = Array.isArray(json?.items) ? json.items.slice(0, 5) : [];
+                const items = Array.isArray(json?.items) ? json.items.slice(0, 3) : [];
                 const mapped = items.map(item => ({
                     title: item.headline || item.title || item.label || 'Article',
                     url: item.id || item.url || item['@id'],
@@ -405,12 +394,12 @@ async function fetchNewsArticles(query) {
     // Archive.org (historical / mixed)
     tasks.push((async () => {
         try {
-            const archiveUrl = `https://archive.org/advancedsearch.php?q=${encodeURIComponent(query)}&output=json&rows=5`;
+            const archiveUrl = `https://archive.org/advancedsearch.php?q=${encodeURIComponent(query)}&output=json&rows=3`;
             const res = await fetch(archiveUrl, { headers: { 'Accept': 'application/json' } });
             if (res.ok) {
                 const json = await res.json();
                 const docs = json?.response?.docs || [];
-                const mapped = docs.slice(0, 5).map(doc => ({
+                const mapped = docs.slice(0, 3).map(doc => ({
                     title: doc.title || 'Archive Item',
                     url: `https://archive.org/details/${encodeURIComponent(doc.identifier)}`,
                     date: doc.date || doc.year,
@@ -667,7 +656,16 @@ out center meta;
         }
 
         const newsLinks = buildNewsLinks(processedElement.name, processedElement.address, processedElement.lat, processedElement.lon);
-        const nativeNews = await fetchNewsArticles(processedElement.name || processedElement.description || (processedElement.address ? Object.values(processedElement.address).join(' ') : '') || `${processedElement.lat},${processedElement.lon}`);
+        // Build narrow search query: name + address only (no description, no coordinates)
+        const newsQueryParts = [];
+        if (processedElement.name) {
+            newsQueryParts.push(`"${processedElement.name}"`);
+        }
+        if (processedElement.address) {
+            if (processedElement.address['addr:city']) newsQueryParts.push(processedElement.address['addr:city']);
+            if (processedElement.address['addr:state']) newsQueryParts.push(processedElement.address['addr:state']);
+        }
+        const nativeNews = await fetchNewsArticles(newsQueryParts.join(' ').trim() || null);
         const news = { ...newsLinks, articles: nativeNews };
 
         // Routing to nearest access points
@@ -702,7 +700,6 @@ out center meta;
             imagery,
             news,
             routing,
-            streetView: buildStreetViewLinks(processedElement.lat, processedElement.lon),
             success: true
         }), {
             status: 200,
@@ -728,4 +725,4 @@ out center meta;
     }
 }
 
-export { calculateDistanceMeters, parseOSMHistoryXml, summarizeHistory, buildImageryLinks, buildNewsLinks, buildStreetViewLinks, buildHistoryChanges, buildAccessLines, fetchRoute, fetchNewsArticles, fetchWaybackReleases, isValidCoordinates };
+export { calculateDistanceMeters, parseOSMHistoryXml, summarizeHistory, buildImageryLinks, buildNewsLinks, buildHistoryChanges, buildAccessLines, fetchRoute, fetchNewsArticles, fetchWaybackReleases, isValidCoordinates };

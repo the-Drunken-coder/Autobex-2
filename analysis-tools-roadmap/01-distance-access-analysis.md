@@ -6,14 +6,13 @@
 
 ## Overview
 
-Calculate distances to nearest parking lots and road access points, identify access routes, and provide navigation directions.
+Calculate distances to nearest parking lots and road access points, and identify access points.
 
 ## Features
 
 - Calculate distance to nearest parking lot
 - Calculate distance to nearest road access
-- Identify access points and routes
-- Show walking/driving directions from current location
+- Identify access points
 
 ## Rough Implementation Plan
 
@@ -27,7 +26,6 @@ Calculate distances to nearest parking lots and road access points, identify acc
 2. **Distance calculation**
    - Calculate straight-line distance from location to nearest parking
    - Calculate straight-line distance to nearest road
-   - Optionally calculate walking distance using routing API (if available)
 
 3. **Return data structure**
    ```javascript
@@ -45,21 +43,14 @@ Calculate distances to nearest parking lots and road access points, identify acc
    - Show distances with icons
    - Display parking/road names if available
 
-2. **Map integration** (optional)
-   - Show markers for nearest parking and roads
-   - Draw lines showing distances
-   - Link to Google Maps directions
-
 ### APIs/Services
 
 - **Overpass API** - Query OSM for parking and roads
-- **Google Maps Directions API** (optional) - For walking/driving directions
-- **OpenRouteService** (free alternative) - For routing
 
 ## Notes
 
 - Plans may change based on API availability
-- Distance calculations can be simple straight-line or more complex routing
+- Distance calculations use straight-line (Haversine formula)
 - May need to handle cases where no parking/roads found nearby
 - Consider caching results for performance
 

@@ -12,7 +12,6 @@ let placeGroups = [];
 let currentTool = 'search';
 let analyzeMap = null;
 let analyzeLayers = { base: null, historical: null };
-let analyzeRouteLayers = [];
 
 // Bing Maps tile layer with quadkey conversion
 const BingMapsLayer = L.TileLayer.extend({
@@ -1696,7 +1695,6 @@ function clearAnalyzeMap() {
         analyzeMap = null;
     }
     analyzeLayers = { base: null, historical: null };
-    analyzeRouteLayers = [];
 }
 
 function initAnalyzeMap(lat, lon) {
@@ -1712,93 +1710,6 @@ function initAnalyzeMap(lat, lon) {
     setTimeout(() => analyzeMap && analyzeMap.invalidateSize(), 100);
 }
 
-function addAnalyzeRoutes(routing, origin) {
-    analyzeRouteLayers.forEach(layer => layer.remove());
-    analyzeRouteLayers = [];
-    if (!routing || !analyzeMap) return;
-
-    const addRoute = (route, color, label) => {
-        if (!route || !route.geometry || !route.geometry.coordinates) return;
-        const latLngs = route.geometry.coordinates.map(coord => [coord[1], coord[0]]);
-        const polyline = L.polyline(latLngs, { color, weight: 5, opacity: 0.8 }).addTo(analyzeMap);
-        polyline.bindTooltip(`${label}: ${(route.distance / 1000).toFixed(2)} km`, { sticky: true });
-        analyzeRouteLayers.push(polyline);
-        return latLngs;
-    };
-
-    addRoute(routing.parkingRoute, '#22c55e', 'Parking route');
-    addRoute(routing.roadRoute, '#3b82f6', 'Road route');
-
-    if (routing.accessLines && routing.accessLines.length > 0) {
-        routing.accessLines.forEach(line => {
-            const polyline = L.polyline([[line.from.lat, line.from.lon], [line.to.lat, line.to.lon]], {
-                color: '#f59e0b',
-                dashArray: '6,4',
-                weight: 3,
-                opacity: 0.7
-            }).addTo(analyzeMap);
-            polyline.bindTooltip(`${line.label} (${(line.distance / 1000).toFixed(2)} km)`, { sticky: true });
-            analyzeRouteLayers.push(polyline);
-        });
-    }
-
-    // Keep origin marker on top
-    if (origin && isFinite(origin.lat) && isFinite(origin.lon)) {
-        const marker = L.circleMarker([origin.lat, origin.lon], {
-            radius: 8,
-            color: '#ef4444',
-            fillColor: '#ef4444',
-            fillOpacity: 0.9
-        }).addTo(analyzeMap);
-        marker.bindTooltip('Target location', { permanent: false });
-        analyzeRouteLayers.push(marker);
-    }
-}
-
-function renderRouteSteps(routing) {
-    const stepsContainer = document.getElementById('routeSteps');
-    const summaryContainer = document.getElementById('routeSummary');
-    if (!stepsContainer || !summaryContainer) return;
-
-    const buildList = (route, title) => {
-        if (!route) return '';
-        const durationMinutes = route.duration ? Math.round(route.duration / 60) : null;
-        if (route.isFallback) {
-            return `
-            <div class="route-block">
-                <div class="route-heading">
-                    <strong>${title}</strong>
-                    <span>${escapeHtml(route.summary || 'Direct line')}</span>
-                    <small>${(route.distance / 1000).toFixed(2)} km</small>
-                </div>
-                <p class="muted">Routing unavailable; showing straight-line distance.</p>
-            </div>
-            `;
-        }
-        return `
-            <div class="route-block">
-                <div class="route-heading">
-                    <strong>${title}</strong>
-                    <span>${escapeHtml(route.summary || '')}</span>
-                    <small>${(route.distance / 1000).toFixed(2)} km ${durationMinutes ? `• ${durationMinutes} min` : ''}</small>
-                </div>
-                <ol>
-                    ${(route.steps || []).map(step => `<li>${escapeHtml(step.instruction || 'Continue')} <span class="muted">(${(step.distance / 1000).toFixed(2)} km)</span></li>`).join('')}
-                </ol>
-            </div>
-        `;
-    };
-
-    summaryContainer.innerHTML = `
-        ${routing?.parkingRoute ? `<div class="badge green">Parking ${(routing.parkingRoute.distance / 1000).toFixed(2)} km</div>` : ''}
-        ${routing?.roadRoute ? `<div class="badge blue">Road ${(routing.roadRoute.distance / 1000).toFixed(2)} km</div>` : ''}
-    `;
-
-    stepsContainer.innerHTML = `
-        ${buildList(routing?.parkingRoute, 'To nearest parking')}
-        ${buildList(routing?.roadRoute, 'To nearest road')}
-    `;
-}
 
 function setupImageryControls(imagery) {
     const select = document.getElementById('imageryReleaseSelect');
@@ -1823,19 +1734,57 @@ function setupImageryControls(imagery) {
 
     const updateLayer = () => {
         const selectedId = select.value || (releases[0] && releases[0].id);
-        const selectedRelease = releases.find(r => String(r.id) === selectedId) || releases[0];
-        if (!selectedRelease) return;
+        console.log('🔍 [Imagery] Selected ID:', selectedId, 'Available releases:', releases.map(r => ({ id: r.id, date: r.date, tileUrl: r.tileUrl })));
+        
+        const selectedRelease = releases.find(r => String(r.id) === String(selectedId)) || releases[0];
+        if (!selectedRelease || !selectedRelease.tileUrl) {
+            console.error('❌ [Imagery] No valid release selected or missing tileUrl');
+            return;
+        }
 
+        console.log('🔄 [Imagery] Updating layer:', {
+            id: selectedRelease.id,
+            date: selectedRelease.date,
+            tileUrl: selectedRelease.tileUrl
+        });
+
+        // Remove existing historical layer completely
         if (analyzeLayers.historical) {
             analyzeMap.removeLayer(analyzeLayers.historical);
+            // Clear the layer's tile cache
+            if (analyzeLayers.historical._tiles) {
+                Object.keys(analyzeLayers.historical._tiles).forEach(key => {
+                    const tile = analyzeLayers.historical._tiles[key];
+                    if (tile && tile.el) {
+                        tile.el.remove();
+                    }
+                });
+            }
             analyzeLayers.historical = null;
         }
 
-        analyzeLayers.historical = L.tileLayer(selectedRelease.tileUrl || releases[0].tileUrl, {
+        // Create new tile layer with the selected release URL
+        const tileUrl = selectedRelease.tileUrl;
+        console.log('🗺️ [Imagery] Creating tile layer with URL:', tileUrl);
+        
+        analyzeLayers.historical = L.tileLayer(tileUrl, {
             attribution: '&copy; Esri Wayback Imagery',
             maxZoom: 19,
-            opacity: (Number(slider.value) || 0) / 100
-        }).addTo(analyzeMap);
+            opacity: (Number(slider.value) || 0) / 100,
+            tileSize: 256,
+            zoomOffset: 0
+        });
+        
+        // Add layer to map
+        analyzeLayers.historical.addTo(analyzeMap);
+        
+        // Force map to refresh and load new tiles
+        analyzeMap.invalidateSize();
+        setTimeout(() => {
+            if (analyzeMap && analyzeLayers.historical) {
+                analyzeMap.setView(analyzeMap.getCenter(), analyzeMap.getZoom(), { animate: false });
+            }
+        }, 100);
 
         const releaseLabel = selectedRelease.date || selectedRelease.id;
         const safeReleaseLabel = releaseLabel == null ? '' : String(releaseLabel);
@@ -1879,12 +1828,6 @@ function displayAnalyzeResults(data) {
         return `${Math.round(meters)} m`;
     };
 
-    const safeDirectionsLink = (lat, lon) => {
-        const latNum = Number(lat);
-        const lonNum = Number(lon);
-        if (!Number.isFinite(latNum) || !Number.isFinite(lonNum)) return '';
-        return `https://www.google.com/maps/dir/?api=1&destination=${latNum},${lonNum}`;
-    };
 
     let html = '';
     
@@ -1924,93 +1867,27 @@ function displayAnalyzeResults(data) {
     }
     
     html += `</div></div>`;
-    
-    if (data.streetView) {
-        html += `
-            <div class="analyze-section">
-                <h2><i data-lucide="camera"></i>Street View</h2>
-                <div class="analyze-info-grid">
-                    ${data.streetView.google ? `
-                        <div class="analyze-info-item">
-                            <span class="analyze-info-label">Google</span>
-                            <span class="analyze-info-value"><a href="${data.streetView.google.url}" target="_blank" rel="noopener noreferrer">Open Street View</a></span>
-                        </div>` : ''}
-                    ${data.streetView.bing ? `
-                        <div class="analyze-info-item">
-                            <span class="analyze-info-label">Bing</span>
-                            <span class="analyze-info-value"><a href="${data.streetView.bing.url}" target="_blank" rel="noopener noreferrer">Open Streetside</a></span>
-                        </div>` : ''}
-                </div>
-            </div>
-        `;
-    }
 
-    if (data.distanceAccess && (data.distanceAccess.nearestParking || data.distanceAccess.nearestRoad)) {
+    if (data.distanceAccess && data.distanceAccess.nearestRoad) {
         html += `
             <div class="analyze-section">
                 <h2><i data-lucide="route"></i>Access & Distance</h2>
                 <div class="analyze-info-grid">
         `;
-        if (data.distanceAccess.nearestParking) {
-            const parking = data.distanceAccess.nearestParking;
-            html += `
-                    <div class="analyze-info-item">
-                        <span class="analyze-info-label">Nearest Parking</span>
-                        <span class="analyze-info-value">
-                            ${escapeHtml(parking.name || 'Parking')}
-                            <br/>
-                            ${formatDistance(parking.distance)}
-                            ${(parking.lat && parking.lon && safeDirectionsLink(parking.lat, parking.lon)) ? `<br/><a href="${safeDirectionsLink(parking.lat, parking.lon)}" target="_blank" rel="noopener noreferrer">Directions</a>` : ''}
-                        </span>
-                    </div>
-            `;
-        }
-        if (data.distanceAccess.nearestRoad) {
-            const road = data.distanceAccess.nearestRoad;
-            html += `
-                    <div class="analyze-info-item">
-                        <span class="analyze-info-label">Nearest Road</span>
-                        <span class="analyze-info-value">
-                            ${escapeHtml(road.name || (road.tags ? road.tags.highway : '') || 'Road')}
-                            <br/>
-                            ${formatDistance(road.distance)}
-                            ${(road.lat && road.lon && safeDirectionsLink(road.lat, road.lon)) ? `<br/><a href="${safeDirectionsLink(road.lat, road.lon)}" target="_blank" rel="noopener noreferrer">Directions</a>` : ''}
-                        </span>
-                    </div>
-            `;
-        }
-        html += `</div>`;
-
-        if (data.distanceAccess.accessPoints && data.distanceAccess.accessPoints.length > 0) {
-            html += `
-                <div class="analyze-info-grid" style="grid-template-columns: 1fr;">
-                    <div class="analyze-info-item">
-                        <span class="analyze-info-label">Nearby Access Points</span>
-                        <span class="analyze-info-value">
-                            <ul>
-                                ${data.distanceAccess.accessPoints.map(point => `
-                                    <li>${escapeHtml(point.name || (point.tags ? point.tags.highway : '') || 'Access')} - ${formatDistance(point.distance)}</li>
-                                `).join('')}
-                            </ul>
-                        </span>
-                    </div>
+        const road = data.distanceAccess.nearestRoad;
+        html += `
+                <div class="analyze-info-item">
+                    <span class="analyze-info-label">Nearest Road</span>
+                    <span class="analyze-info-value">
+                        ${escapeHtml(road.name || (road.tags ? road.tags.highway : '') || 'Road')}
+                        <br/>
+                        ${formatDistance(road.distance)}
+                    </span>
                 </div>
-            `;
-        }
-
-        html += `</div>`;
+        `;
+        html += `</div></div>`;
     }
     
-    if (element.lat && element.lon) {
-        html += `
-            <div class="analyze-section">
-                <h2><i data-lucide="map"></i>Map & Directions</h2>
-                <div class="analyze-map" id="analyzeMap"></div>
-                <div id="routeSummary" class="route-summary"></div>
-                <div id="routeSteps" class="route-steps"></div>
-            </div>
-        `;
-    }
 
     // Name and Description
     if (element.name || element.description) {
@@ -2094,6 +1971,7 @@ function displayAnalyzeResults(data) {
                     </label>
                 </div>
                 <p class="muted" id="imageryStatus">Loading imagery…</p>
+                <div class="analyze-map" id="analyzeMap"></div>
                 <div class="analyze-info-grid">
         `;
         if (data.imagery.current) {
@@ -2314,11 +2192,16 @@ function displayAnalyzeResults(data) {
     analyzeResults.innerHTML = html;
     lucide.createIcons();
 
+    // Initialize map and imagery after HTML is inserted into DOM
     if (element.lat && element.lon) {
-        initAnalyzeMap(element.lat, element.lon);
-        addAnalyzeRoutes(data.routing, { lat: element.lat, lon: element.lon });
-        renderRouteSteps(data.routing || {});
-        setupImageryControls(data.imagery);
+        // Use setTimeout to ensure DOM is ready
+        setTimeout(() => {
+            initAnalyzeMap(element.lat, element.lon);
+            // Wait for map to initialize before setting up imagery controls
+            setTimeout(() => {
+                setupImageryControls(data.imagery);
+            }, 300);
+        }, 100);
     }
 }
 

@@ -71,3 +71,4 @@ npm run test:js:watch  # Watch mode for development
 - Some API tests may timeout if the Overpass API is slow - this is expected
 - Frontend utility tests are pure unit tests and don't require the server
 
+
