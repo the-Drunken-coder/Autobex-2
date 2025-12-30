@@ -239,6 +239,225 @@ function buildNewsLinks(name, address, lat, lon) {
     };
 }
 
+function buildStreetViewLinks(lat, lon) {
+    if (!isValidCoordinates(lat, lon)) return null;
+    return {
+        google: {
+            provider: 'Google Street View',
+            url: `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lon}`
+        },
+        bing: {
+            provider: 'Bing Streetside',
+            url: `https://www.bing.com/maps?cp=${lat}~${lon}&style=x&lvl=19`
+        }
+    };
+}
+
+function buildHistoryChanges(entries) {
+    const changes = [];
+    for (let i = 1; i < entries.length; i++) {
+        const prev = entries[i - 1].tags || {};
+        const current = entries[i].tags || {};
+        const added = [];
+        const removed = [];
+        const changed = [];
+
+        Object.keys(current).forEach(key => {
+            if (!(key in prev)) {
+                added.push({ key, value: current[key] });
+            } else if (prev[key] !== current[key]) {
+                changed.push({ key, from: prev[key], to: current[key] });
+            }
+        });
+
+        Object.keys(prev).forEach(key => {
+            if (!(key in current)) {
+                removed.push({ key, value: prev[key] });
+            }
+        });
+
+        changes.push({
+            version: entries[i].version,
+            timestamp: entries[i].timestamp,
+            user: entries[i].user,
+            added,
+            removed,
+            changed
+        });
+    }
+    return changes;
+}
+
+async function fetchWaybackReleases() {
+    try {
+        const res = await fetch('https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/VectorTileServer/releases?f=pjson', {
+            headers: { 'Accept': 'application/json' }
+        });
+        if (!res.ok) throw new Error('Wayback release fetch failed');
+        const json = await res.json();
+        const releases = (json.releases || json.versions || []).slice(0, 6).map((release, idx) => {
+            const id = release.release || release.id || release.name || release.itemId || `release-${idx}`;
+            const date = release.releaseDate || release.date || release.release_date || null;
+            return {
+                id,
+                date,
+                tileUrl: `https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/WMTS/1.0.0/${id}/default028mm/MapServer/tile/{z}/{y}/{x}`
+            };
+        });
+        return releases;
+    } catch (err) {
+        console.error('❌ [Analyze API] Failed to fetch Wayback releases', err);
+        // Fallback static releases
+        return [
+            { id: 'default028mm', date: 'Latest', tileUrl: 'https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/WMTS/1.0.0/default028mm/MapServer/tile/{z}/{y}/{x}' },
+            { id: '2017', date: '2017', tileUrl: 'https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/WMTS/1.0.0/2017/default028mm/MapServer/tile/{z}/{y}/{x}' },
+            { id: '2014', date: '2014', tileUrl: 'https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/WMTS/1.0.0/2014/default028mm/MapServer/tile/{z}/{y}/{x}' }
+        ];
+    }
+}
+
+async function fetchNewsArticles(query) {
+    const results = {
+        current: [],
+        historical: []
+    };
+
+    if (!query) {
+        return results;
+    }
+
+    // Google News RSS (recent)
+    try {
+        const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=en-US&gl=US&ceid=US:en`;
+        const res = await fetch(rssUrl);
+        if (res.ok) {
+            const text = await res.text();
+            const items = [];
+            const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+            let match;
+            while ((match = itemRegex.exec(text)) !== null && items.length < 5) {
+                const block = match[1];
+                const titleMatch = block.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>|<title>(.*?)<\/title>/);
+                const linkMatch = block.match(/<link>(.*?)<\/link>/);
+                const dateMatch = block.match(/<pubDate>(.*?)<\/pubDate>/);
+                const title = titleMatch ? (titleMatch[1] || titleMatch[2]) : 'Untitled';
+                const link = linkMatch ? linkMatch[1] : '#';
+                items.push({
+                    title,
+                    url: link,
+                    date: dateMatch ? dateMatch[1] : null,
+                    source: 'Google News'
+                });
+            }
+            results.current = items;
+        }
+    } catch (err) {
+        console.error('❌ [Analyze API] Google News RSS failed', err);
+    }
+
+    // Chronicling America (historical)
+    try {
+        const chroniclingUrl = `https://chroniclingamerica.loc.gov/search/pages/results/?format=json&proxtext=${encodeURIComponent(query)}&rows=5`;
+        const res = await fetch(chroniclingUrl, { headers: { 'Accept': 'application/json' } });
+        if (res.ok) {
+            const json = await res.json();
+            const items = (json.items || json.items_found || json.itemsReturned || json.articles || json.results || json?.items || []).slice(0, 5);
+            const mapped = items.map(item => ({
+                title: item.headline || item.title || item.label || 'Article',
+                url: item.id || item.url || item['@id'],
+                date: item.date || item.created || item.pub_date,
+                source: item.publisher || 'Chronicling America',
+                snippet: item.snippet || item.text || null
+            }));
+            results.historical.push(...mapped);
+        }
+    } catch (err) {
+        console.error('❌ [Analyze API] Chronicling America fetch failed', err);
+    }
+
+    // Archive.org (historical / mixed)
+    try {
+        const archiveUrl = `https://archive.org/advancedsearch.php?q=${encodeURIComponent(query)}&output=json&rows=5`;
+        const res = await fetch(archiveUrl, { headers: { 'Accept': 'application/json' } });
+        if (res.ok) {
+            const json = await res.json();
+            const docs = json?.response?.docs || [];
+            const mapped = docs.slice(0, 5).map(doc => ({
+                title: doc.title || 'Archive Item',
+                url: `https://archive.org/details/${doc.identifier}`,
+                date: doc.date || doc.year,
+                source: doc.creator || 'Archive.org',
+                snippet: doc.description ? (Array.isArray(doc.description) ? doc.description[0] : doc.description) : null
+            }));
+            results.historical.push(...mapped);
+        }
+    } catch (err) {
+        console.error('❌ [Analyze API] Archive.org fetch failed', err);
+    }
+
+    return results;
+}
+
+function buildAccessLines(origin, accessPoints = []) {
+    if (!isValidCoordinates(origin.lat, origin.lon)) return [];
+    return accessPoints.filter(p => isValidCoordinates(p.lat, p.lon)).map(p => ({
+        from: { lat: origin.lat, lon: origin.lon },
+        to: { lat: p.lat, lon: p.lon },
+        distance: p.distance || calculateDistanceMeters(origin.lat, origin.lon, p.lat, p.lon),
+        label: p.name || p.tags?.highway || 'Access'
+    }));
+}
+
+async function fetchRoute(origin, destination) {
+    if (!origin || !destination || !isValidCoordinates(origin.lat, origin.lon) || !isValidCoordinates(destination.lat, destination.lon)) {
+        return null;
+    }
+
+    const fallback = {
+        geometry: {
+            coordinates: [
+                [origin.lon, origin.lat],
+                [destination.lon, destination.lat]
+            ]
+        },
+        distance: calculateDistanceMeters(origin.lat, origin.lon, destination.lat, destination.lon),
+        duration: null,
+        steps: [],
+        summary: 'Direct line (routing unavailable)'
+    };
+
+    try {
+        const url = `https://router.project-osrm.org/route/v1/driving/${origin.lon},${origin.lat};${destination.lon},${destination.lat}?overview=full&geometries=geojson&steps=true`;
+        const res = await fetch(url);
+        if (!res.ok) {
+            console.error('❌ [Analyze API] Routing request failed', res.status, res.statusText);
+            return fallback;
+        }
+        const json = await res.json();
+        const route = json?.routes?.[0];
+        if (!route) return fallback;
+
+        const leg = route.legs && route.legs[0];
+        const steps = (leg?.steps || []).map(step => ({
+            distance: step.distance,
+            duration: step.duration,
+            instruction: step.maneuver?.instruction || step.name || 'Continue',
+            name: step.name || ''
+        }));
+
+        return {
+            geometry: route.geometry,
+            distance: route.distance,
+            duration: route.duration,
+            summary: leg?.summary || 'Route',
+            steps
+        };
+    } catch (err) {
+        console.error('❌ [Analyze API] Routing error', err);
+        return fallback;
+    }
+}
+
 export async function onRequestGet(context) {
     const { request } = context;
     const url = new URL(request.url);
@@ -396,13 +615,43 @@ out center meta;
         let history = null;
         try {
             history = await fetchHistoryData(type, id);
+            if (history?.history) {
+                history.changes = buildHistoryChanges(history.history);
+            }
         } catch (error) {
             console.error('❌ [Analyze API] History retrieval failed', error);
         }
 
-        const imagery = buildImageryLinks(processedElement.lat, processedElement.lon);
-        const news = buildNewsLinks(processedElement.name, processedElement.address, processedElement.lat, processedElement.lon);
-        
+        const imageryLinks = buildImageryLinks(processedElement.lat, processedElement.lon);
+        let imagery = imageryLinks;
+        try {
+            const releases = await fetchWaybackReleases();
+            imagery = {
+                ...imageryLinks,
+                waybackReleases: releases
+            };
+        } catch (err) {
+            console.error('❌ [Analyze API] Imagery release fetch failed', err);
+        }
+
+        const newsLinks = buildNewsLinks(processedElement.name, processedElement.address, processedElement.lat, processedElement.lon);
+        const nativeNews = await fetchNewsArticles(processedElement.name || processedElement.description || (processedElement.address ? Object.values(processedElement.address).join(' ') : '') || `${processedElement.lat},${processedElement.lon}`);
+        const news = { ...newsLinks, articles: nativeNews };
+
+        // Routing to nearest access points
+        let routing = null;
+        if (distanceAccess) {
+            const origin = { lat: processedElement.lat, lon: processedElement.lon };
+            routing = {};
+            if (distanceAccess.nearestParking) {
+                routing.parkingRoute = await fetchRoute(origin, distanceAccess.nearestParking);
+            }
+            if (distanceAccess.nearestRoad) {
+                routing.roadRoute = await fetchRoute(origin, distanceAccess.nearestRoad);
+            }
+            routing.accessLines = buildAccessLines(origin, distanceAccess.accessPoints || []);
+        }
+
         const totalDuration = Date.now() - requestStartTime;
         console.log(`⏱️  [Analyze API] Response received in ${overpassDuration}ms`);
         console.log(`✨ [Analyze API] Analysis complete (total time: ${totalDuration}ms)`);
@@ -414,6 +663,8 @@ out center meta;
             history,
             imagery,
             news,
+            routing,
+            streetView: buildStreetViewLinks(processedElement.lat, processedElement.lon),
             success: true
         }), {
             status: 200,
@@ -439,4 +690,4 @@ out center meta;
     }
 }
 
-export { calculateDistanceMeters, parseOSMHistoryXml, summarizeHistory, buildImageryLinks, buildNewsLinks, isValidCoordinates };
+export { calculateDistanceMeters, parseOSMHistoryXml, summarizeHistory, buildImageryLinks, buildNewsLinks, buildStreetViewLinks, isValidCoordinates };
