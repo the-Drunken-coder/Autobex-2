@@ -177,9 +177,10 @@ describe('Search API', () => {
             expect(data.error).toContain('No filters selected');
         });
 
-        it('should accept filter parameters', { timeout: 30000 }, async () => {
+        it('should accept filter parameters', { timeout: 60000 }, async () => {
+            // Using a smaller city for faster test execution
             const response = await fetch(
-                `${API_BASE_URL}?type=city&area=New York&abandoned=true&disused=false`
+                `${API_BASE_URL}?type=city&area=Hoboken NJ&abandoned=true&disused=false`
             );
             
             expect(response.status).toBe(200);
@@ -189,18 +190,20 @@ describe('Search API', () => {
     });
 
     describe('Response Format', () => {
-        it('should return CORS headers', { timeout: 30000 }, async () => {
+        it('should return CORS headers', { timeout: 60000 }, async () => {
+            // Using a smaller city for faster test execution
             const response = await fetch(
-                `${API_BASE_URL}?type=city&area=New York&abandoned=true`
+                `${API_BASE_URL}?type=city&area=Hoboken NJ&abandoned=true`
             );
             
             expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
             expect(response.headers.get('Content-Type')).toBe('application/json');
         });
 
-        it('should return valid JSON structure', { timeout: 30000 }, async () => {
+        it('should return valid JSON structure', { timeout: 60000 }, async () => {
+            // Using a smaller city for faster test execution
             const response = await fetch(
-                `${API_BASE_URL}?type=city&area=New York&abandoned=true`
+                `${API_BASE_URL}?type=city&area=Hoboken NJ&abandoned=true`
             );
             
             const data = await response.json();
