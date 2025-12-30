@@ -1635,6 +1635,21 @@ function displayAnalyzeResults(data) {
         return;
     }
     
+    const formatDistance = (meters) => {
+        if (meters === null || meters === undefined || isNaN(meters)) return '—';
+        if (meters >= 1000) {
+            return `${(meters / 1000).toFixed(2)} km`;
+        }
+        return `${Math.round(meters)} m`;
+    };
+
+    const safeDirectionsLink = (lat, lon) => {
+        const latNum = Number(lat);
+        const lonNum = Number(lon);
+        if (!Number.isFinite(latNum) || !Number.isFinite(lonNum)) return '';
+        return `https://www.google.com/maps/dir/?api=1&destination=${latNum},${lonNum}`;
+    };
+
     let html = '';
     
     // Basic Information
@@ -1673,6 +1688,62 @@ function displayAnalyzeResults(data) {
     }
     
     html += `</div></div>`;
+    
+    if (data.distanceAccess && (data.distanceAccess.nearestParking || data.distanceAccess.nearestRoad)) {
+        html += `
+            <div class="analyze-section">
+                <h2><i data-lucide="route"></i>Access & Distance</h2>
+                <div class="analyze-info-grid">
+        `;
+        if (data.distanceAccess.nearestParking) {
+            const parking = data.distanceAccess.nearestParking;
+            html += `
+                    <div class="analyze-info-item">
+                        <span class="analyze-info-label">Nearest Parking</span>
+                        <span class="analyze-info-value">
+                            ${escapeHtml(parking.name || 'Parking')}
+                            <br/>
+                            ${formatDistance(parking.distance)}
+                            ${(parking.lat && parking.lon && safeDirectionsLink(parking.lat, parking.lon)) ? `<br/><a href="${safeDirectionsLink(parking.lat, parking.lon)}" target="_blank" rel="noopener noreferrer">Directions</a>` : ''}
+                        </span>
+                    </div>
+            `;
+        }
+        if (data.distanceAccess.nearestRoad) {
+            const road = data.distanceAccess.nearestRoad;
+            html += `
+                    <div class="analyze-info-item">
+                        <span class="analyze-info-label">Nearest Road</span>
+                        <span class="analyze-info-value">
+                            ${escapeHtml(road.name || (road.tags ? road.tags.highway : '') || 'Road')}
+                            <br/>
+                            ${formatDistance(road.distance)}
+                            ${(road.lat && road.lon && safeDirectionsLink(road.lat, road.lon)) ? `<br/><a href="${safeDirectionsLink(road.lat, road.lon)}" target="_blank" rel="noopener noreferrer">Directions</a>` : ''}
+                        </span>
+                    </div>
+            `;
+        }
+        html += `</div>`;
+
+        if (data.distanceAccess.accessPoints && data.distanceAccess.accessPoints.length > 0) {
+            html += `
+                <div class="analyze-info-grid" style="grid-template-columns: 1fr;">
+                    <div class="analyze-info-item">
+                        <span class="analyze-info-label">Nearby Access Points</span>
+                        <span class="analyze-info-value">
+                            <ul>
+                                ${data.distanceAccess.accessPoints.map(point => `
+                                    <li>${escapeHtml(point.name || (point.tags ? point.tags.highway : '') || 'Access')} - ${formatDistance(point.distance)}</li>
+                                `).join('')}
+                            </ul>
+                        </span>
+                    </div>
+                </div>
+            `;
+        }
+
+        html += `</div>`;
+    }
     
     // Name and Description
     if (element.name || element.description) {
@@ -1738,6 +1809,145 @@ function displayAnalyzeResults(data) {
             }
         });
         html += `</div></div>`;
+    }
+    
+    if (data.streetView) {
+        html += `
+            <div class="analyze-section">
+                <h2><i data-lucide="camera"></i>Street-Level Imagery</h2>
+                <div class="analyze-info-grid">
+        `;
+        ['google', 'mapillary', 'kartaview'].forEach(providerKey => {
+            const provider = data.streetView[providerKey];
+            if (!provider) return;
+            const labelMap = { google: 'Google Street View', mapillary: 'Mapillary', kartaview: 'KartaView' };
+            html += `
+                    <div class="analyze-info-item">
+                        <span class="analyze-info-label">${labelMap[providerKey]}</span>
+                        <span class="analyze-info-value">
+                            ${provider.available ? `<a href="${provider.url}" target="_blank" rel="noopener noreferrer">Open imagery</a>` : 'Not available'}
+                        </span>
+                    </div>
+            `;
+        });
+        html += `</div></div>`;
+    }
+
+    if (data.imagery) {
+        html += `
+            <div class="analyze-section">
+                <h2><i data-lucide="image"></i>Historical Imagery</h2>
+                <div class="analyze-info-grid">
+        `;
+        if (data.imagery.current) {
+            html += `
+                    <div class="analyze-info-item">
+                        <span class="analyze-info-label">Current</span>
+                        <span class="analyze-info-value">
+                            <a href="${data.imagery.current.url}" target="_blank" rel="noopener noreferrer">${escapeHtml(data.imagery.current.provider)}</a>
+                        </span>
+                    </div>
+            `;
+        }
+        if (data.imagery.historical && data.imagery.historical.length > 0) {
+            data.imagery.historical.forEach(item => {
+                html += `
+                    <div class="analyze-info-item">
+                        <span class="analyze-info-label">Historical</span>
+                        <span class="analyze-info-value">
+                            <a href="${item.url}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.provider)}</a>
+                        </span>
+                    </div>
+                `;
+            });
+        }
+        html += `</div></div>`;
+    }
+
+    if (data.news) {
+        html += `
+            <div class="analyze-section">
+                <h2><i data-lucide="newspaper"></i>News & Media</h2>
+                <div class="analyze-info-grid">
+        `;
+        const renderNewsList = (items, label) => items.map(item => `
+            <div class="analyze-info-item">
+                <span class="analyze-info-label">${label}</span>
+                <span class="analyze-info-value">
+                    <a href="${item.url}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title)}</a>
+                    <br/><small>${escapeHtml(item.source || '')}</small>
+                </span>
+            </div>
+        `).join('');
+
+        if (data.news.current && data.news.current.length > 0) {
+            html += renderNewsList(data.news.current, 'Recent');
+        }
+        if (data.news.historical && data.news.historical.length > 0) {
+            html += renderNewsList(data.news.historical, 'Historical');
+        }
+        html += `</div></div>`;
+    }
+
+    if (data.history) {
+        html += `
+            <div class="analyze-section">
+                <h2><i data-lucide="history"></i>Edit History</h2>
+                <div class="analyze-info-grid">
+        `;
+        if (data.history.firstMapped) {
+            html += `
+                <div class="analyze-info-item">
+                    <span class="analyze-info-label">First Mapped</span>
+                    <span class="analyze-info-value">${escapeHtml(data.history.firstMapped)}</span>
+                </div>
+            `;
+        }
+        if (data.history.lastEdited) {
+            html += `
+                <div class="analyze-info-item">
+                    <span class="analyze-info-label">Last Edited</span>
+                    <span class="analyze-info-value">${escapeHtml(data.history.lastEdited)}</span>
+                </div>
+            `;
+        }
+        if (data.history.abandonedTagAdded) {
+            html += `
+                <div class="analyze-info-item">
+                    <span class="analyze-info-label">Abandonment Tag Added</span>
+                    <span class="analyze-info-value">${escapeHtml(data.history.abandonedTagAdded)}</span>
+                </div>
+            `;
+        }
+        if (data.history.contributors && data.history.contributors.length > 0) {
+            html += `
+                <div class="analyze-info-item" style="grid-column: 1 / -1;">
+                    <span class="analyze-info-label">Contributors</span>
+                    <span class="analyze-info-value">${escapeHtml(data.history.contributors.join(', '))}</span>
+                </div>
+            `;
+        }
+        html += `</div>`;
+
+        if (data.history.history && data.history.history.length > 0) {
+            const recentHistory = data.history.history.slice(-5);
+            html += `
+                <div class="analyze-info-grid" style="grid-template-columns: 1fr;">
+                    <div class="analyze-info-item">
+                        <span class="analyze-info-label">Recent Versions</span>
+                        <span class="analyze-info-value">
+                            <ul>
+                                ${recentHistory.map(entry => `
+                                    <li>v${entry.version || '?'} • ${escapeHtml(entry.timestamp || 'Unknown')} • ${escapeHtml(entry.user || 'Unknown')}</li>
+                                `).join('')}
+                            </ul>
+                        </span>
+                    </div>
+                </div>
+            `;
+        }
+
+        html += `</div>`;
     }
     
     // External Links
