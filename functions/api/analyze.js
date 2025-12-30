@@ -293,7 +293,10 @@ async function fetchWikimediaContent(name, lat, lon) {
                 const pages = Object.values(json?.query?.pages || {});
                 pages.forEach(page => {
                     const info = Array.isArray(page.imageinfo) ? page.imageinfo[0] : null;
-                    const strip = (val) => val ? String(val).replace(/<[^>]+>/g, '').trim() : null;
+                    const strip = (val) => {
+                        if (!val) return null;
+                        return String(val).replace(/[<>]/g, '').trim();
+                    };
                     if (info?.url || page.thumbnail?.source) {
                         result.commons.photos.push({
                             url: info?.descriptionurl || info?.url || page.fullurl || page.canonicalurl || page.thumbnail?.source,
