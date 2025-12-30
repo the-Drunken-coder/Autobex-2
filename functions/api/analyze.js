@@ -11,21 +11,25 @@ function calculateDistanceMeters(lat1, lon1, lat2, lon2) {
 
 function parseOSMHistoryXml(xmlText, type) {
     const entries = [];
-    const segments = xmlText.split(`<${type}`);
-    segments.shift(); // drop any leading content
+    const startRegex = new RegExp(`<${type}(?:\\s|>)`, 'g');
+    const closeTag = `</${type}>`;
+    let match;
 
-    segments.forEach(segment => {
-        const closingIndex = segment.indexOf(`</${type}>`);
-        const selfCloseIndex = segment.indexOf('/>');
-        let content = null;
+    while ((match = startRegex.exec(xmlText)) !== null) {
+        const startIndex = match.index;
+        const selfCloseIndex = xmlText.indexOf('/>', startIndex);
+        const closingIndex = xmlText.indexOf(closeTag, startIndex);
+        let endIndex = -1;
 
         if (selfCloseIndex !== -1 && (closingIndex === -1 || selfCloseIndex < closingIndex)) {
-            content = `<${type}${segment.slice(0, selfCloseIndex + 2)}`;
+            endIndex = selfCloseIndex + 2;
         } else if (closingIndex !== -1) {
-            content = `<${type}${segment.slice(0, closingIndex + (`</${type}>`).length)}`;
+            endIndex = closingIndex + closeTag.length;
         }
 
-        if (!content) return;
+        if (endIndex === -1) continue;
+
+        const content = xmlText.slice(startIndex, endIndex);
 
         const versionMatch = content.match(/version="([^"]+)"/);
         const timestampMatch = content.match(/timestamp="([^"]+)"/);
@@ -42,7 +46,9 @@ function parseOSMHistoryXml(xmlText, type) {
             user: userMatch ? userMatch[1] : null,
             tags
         });
-    });
+
+        startRegex.lastIndex = endIndex;
+    }
 
     entries.sort((a, b) => (a.version || 0) - (b.version || 0));
     return entries;

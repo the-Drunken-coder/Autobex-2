@@ -1647,7 +1647,7 @@ function displayAnalyzeResults(data) {
         const latNum = Number(lat);
         const lonNum = Number(lon);
         if (!Number.isFinite(latNum) || !Number.isFinite(lonNum)) return '';
-        return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(latNum)},${encodeURIComponent(lonNum)}`;
+        return `https://www.google.com/maps/dir/?api=1&destination=${latNum},${lonNum}`;
     };
 
     let html = '';
