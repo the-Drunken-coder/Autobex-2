@@ -388,54 +388,6 @@ async function fetchWikimediaContent(name, lat, lon) {
     return result;
 }
 
-function buildRelatedMediaLinks(name, lat, lon, address = {}) {
-    const baseQuery = name || `${address['addr:city'] || ''} ${address['addr:state'] || ''}`.trim() || 'abandoned place';
-    const coordsQuery = isValidCoordinates(lat, lon) ? `${lat},${lon}` : null;
-    const query = encodeURIComponent(baseQuery);
-
-    return {
-        flickr: [
-            {
-                title: 'Flickr nearby photos',
-                url: coordsQuery ? `https://www.flickr.com/search/?lat=${lat}&lon=${lon}&radius=5&has_geo=1&view_all=1&text=${query}` : `https://www.flickr.com/search/?text=${query}`,
-                source: 'Flickr'
-            }
-        ],
-        instagram: [
-            {
-                title: 'Instagram keyword search',
-                url: `https://www.instagram.com/explore/search/keyword/?q=${query}`,
-                source: 'Instagram'
-            }
-        ],
-        youtube: [
-            {
-                title: 'YouTube videos',
-                url: `https://www.youtube.com/results?search_query=${query}+abandoned`,
-                source: 'YouTube'
-            }
-        ],
-        reddit: [
-            {
-                title: 'Reddit discussions',
-                url: `https://www.reddit.com/search/?q=${query}+abandoned`,
-                source: 'Reddit'
-            },
-            {
-                title: 'r/urbanexploration search',
-                url: `https://www.reddit.com/r/urbanexploration/search/?q=${query}&restrict_sr=1`,
-                source: 'Reddit'
-            }
-        ],
-        forums: [
-            {
-                title: 'Urban exploration forums',
-                url: `https://www.google.com/search?q=${query}+urban+exploration+forum`,
-                source: 'Web'
-            }
-        ]
-    };
-}
 
 function buildHistoryChanges(entries) {
     const changes = [];
@@ -689,29 +641,6 @@ async function fetchRoute(origin, destination) {
     }
 }
 
-function estimateVegetationOvergrowth(lat, lon) {
-    if (!isValidCoordinates(lat, lon)) return null;
-
-    const clamp = (val) => Math.max(0, Math.min(1, val));
-    const base = (Math.sin(lat) + 1) / 2;
-    const variability = (Math.cos(lon) + 1) / 4;
-    const historicalCoverage = clamp(base * 0.4 + variability * 0.1);
-    const midCoverage = clamp(historicalCoverage + 0.1);
-    const currentCoverage = clamp(midCoverage + 0.1);
-    const growthRate = clamp((currentCoverage - historicalCoverage) / 10);
-    const estimatedYear = new Date().getFullYear() - Math.round((1 - currentCoverage) * 8);
-
-    return {
-        simulated: true,
-        current: { coverage: Number(currentCoverage.toFixed(2)), ndvi: Number((0.25 + base * 0.5).toFixed(2)) },
-        historical: [
-            { date: '2010', coverage: Number(historicalCoverage.toFixed(2)), ndvi: Number((historicalCoverage * 0.6).toFixed(2)) },
-            { date: '2015', coverage: Number(midCoverage.toFixed(2)), ndvi: Number((midCoverage * 0.6).toFixed(2)) }
-        ],
-        growthRate: Number(growthRate.toFixed(4)),
-        estimatedAbandonment: String(estimatedYear)
-    };
-}
 
 export async function onRequestGet(context) {
     const { request } = context;
@@ -910,9 +839,7 @@ out center meta;
             console.error('❌ [Analyze API] Wikimedia enrichment failed', err);
         }
 
-        const media = buildRelatedMediaLinks(processedElement.name, processedElement.lat, processedElement.lon, processedElement.address);
         const satelliteComparison = buildSatelliteComparison(imagery);
-        const vegetation = estimateVegetationOvergrowth(processedElement.lat, processedElement.lon);
 
         // Routing to nearest access points
         let routing = null;
@@ -948,9 +875,7 @@ out center meta;
             news,
             commons: wikimedia.commons,
             wikipedia: wikimedia.wikipedia,
-            media,
             satelliteComparison,
-            vegetation,
             routing,
             success: true
         }), {
@@ -977,4 +902,4 @@ out center meta;
     }
 }
 
-export { calculateDistanceMeters, parseOSMHistoryXml, summarizeHistory, buildImageryLinks, buildStreetViewLinks, buildNewsLinks, buildHistoryChanges, buildAccessLines, fetchRoute, fetchNewsArticles, fetchWaybackReleases, isValidCoordinates, fetchWikimediaContent, buildRelatedMediaLinks, buildSatelliteComparison, estimateVegetationOvergrowth };
+export { calculateDistanceMeters, parseOSMHistoryXml, summarizeHistory, buildImageryLinks, buildStreetViewLinks, buildNewsLinks, buildHistoryChanges, buildAccessLines, fetchRoute, fetchNewsArticles, fetchWaybackReleases, isValidCoordinates, fetchWikimediaContent, buildSatelliteComparison };

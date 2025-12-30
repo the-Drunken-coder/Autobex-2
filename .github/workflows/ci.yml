@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    
+    - name: Install npm dependencies
+      run: npm ci
+    
+    - name: Install Python dependencies
+      run: pip install -r requirements.txt
+    
+    - name: Start development server
+      run: |
+        npm run dev > /dev/null 2>&1 &
+        echo $! > server.pid
+        sleep 15
+      env:
+        CI: true
+      continue-on-error: true
+    
+    - name: Run JavaScript tests
+      run: npm run test:js
+    
+    - name: Stop development server
+      if: always()
+      run: |
+        if [ -f server.pid ]; then
+          kill $(cat server.pid) 2>/dev/null || true
+        fi
+        pkill -f "wrangler pages dev" || true
+    
+    - name: Run Python tests
+      run: npm run test:py
+
