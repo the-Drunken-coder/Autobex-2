@@ -1572,7 +1572,12 @@ document.getElementById('sortSelect').addEventListener('change', () => {
 document.querySelectorAll('.tool-btn').forEach(btn => {
     btn.addEventListener('click', () => {
         const tool = btn.getAttribute('data-tool');
-        switchTool(tool);
+        if (tool === 'analyze') {
+            // Open analyze tool in a new tab
+            window.open(window.location.href.split('#')[0] + '#analyze', '_blank');
+        } else {
+            switchTool(tool);
+        }
     });
 });
 
@@ -2384,5 +2389,12 @@ handleSearchTypeChange();
 
 // Add map click handler
 map.on('click', handleMapClick);
+
+// Check URL hash on load to determine which tool to show
+if (window.location.hash === '#analyze') {
+    switchTool('analyze');
+} else {
+    switchTool('search');
+}
 
 lucide.createIcons();
