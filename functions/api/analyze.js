@@ -295,7 +295,22 @@ async function fetchWikimediaContent(name, lat, lon) {
                     const info = Array.isArray(page.imageinfo) ? page.imageinfo[0] : null;
                     const strip = (val) => {
                         if (!val) return null;
-                        return String(val).replace(/[<>]/g, '').trim();
+                        let sanitized = String(val);
+                        sanitized = sanitized.replace(/<[^>]*>/g, ' ');
+                        sanitized = sanitized
+                            .replace(/&nbsp;/gi, ' ')
+                            .replace(/&amp;/gi, '&')
+                            .replace(/&lt;/gi, '<')
+                            .replace(/&gt;/gi, '>')
+                            .replace(/&#(\d+);/g, (_, num) => {
+                                const code = Number(num);
+                                return Number.isFinite(code) ? String.fromCharCode(code) : _;
+                            })
+                            .replace(/&#x([0-9a-f]+);/gi, (_, hex) => {
+                                const code = parseInt(hex, 16);
+                                return Number.isFinite(code) ? String.fromCharCode(code) : _;
+                            });
+                        return sanitized.replace(/\s+/g, ' ').trim();
                     };
                     if (info?.url || page.thumbnail?.source) {
                         result.commons.photos.push({
@@ -304,7 +319,7 @@ async function fetchWikimediaContent(name, lat, lon) {
                             title: page.title,
                             author: strip(info?.extmetadata?.Artist?.value),
                             license: strip(info?.extmetadata?.LicenseShortName?.value),
-                            date: info?.extmetadata?.DateTimeOriginal?.value || info?.extmetadata?.DateTime?.value || null
+                            date: strip(info?.extmetadata?.DateTimeOriginal?.value || info?.extmetadata?.DateTime?.value)
                         });
                     }
                 });
@@ -862,7 +877,8 @@ out center meta;
             console.error('❌ [Analyze API] History retrieval failed', error);
         }
 
-        const imageryLinks = buildImageryLinks(processedElement.lat, processedElement.lon);
+    const imageryLinks = buildImageryLinks(processedElement.lat, processedElement.lon);
+        const streetViewLinks = buildStreetViewLinks(processedElement.lat, processedElement.lon);
         let imagery = imageryLinks;
         try {
             const releases = await fetchWaybackReleases();
@@ -928,6 +944,7 @@ out center meta;
             distanceAccess,
             history,
             imagery,
+            streetView: streetViewLinks,
             news,
             commons: wikimedia.commons,
             wikipedia: wikimedia.wikipedia,

@@ -2053,9 +2053,11 @@ function displayAnalyzeResults(data) {
     if (data.vegetation) {
         const vegetation = data.vegetation;
         const formatCoverage = (value) => typeof value === 'number' ? `${Math.round(value * 100)}%` : '—';
+        const formatNdvi = (value) => (typeof value === 'number' && Number.isFinite(value)) ? value.toFixed(2) : '—';
         html += `
             <div class="analyze-section">
                 <h2><i data-lucide="leaf"></i>Vegetation Overgrowth</h2>
+                <p class="muted">${vegetation.simulated ? 'Simulated signal (not real NDVI). For reference only.' : ''}</p>
                 <div class="analyze-info-grid">
                     <div class="analyze-info-item">
                         <span class="analyze-info-label">Current Coverage</span>
@@ -2063,7 +2065,7 @@ function displayAnalyzeResults(data) {
                     </div>
                     <div class="analyze-info-item">
                         <span class="analyze-info-label">Current NDVI</span>
-                        <span class="analyze-info-value">${vegetation.current?.ndvi ?? '—'}</span>
+                        <span class="analyze-info-value">${formatNdvi(vegetation.current?.ndvi)}</span>
                     </div>
         `;
         if (vegetation.historical && vegetation.historical.length > 0) {
@@ -2099,7 +2101,7 @@ function displayAnalyzeResults(data) {
         const wikiArticles = data.wikipedia || [];
         html += `
             <div class="analyze-section">
-                <h2><i data-lucide="image-plus"></i>Wikipedia Commons</h2>
+                <h2><i data-lucide="image-plus"></i>Wikimedia Commons</h2>
         `;
         if (commonsPhotos.length > 0) {
             html += `<div class="news-cards">`;

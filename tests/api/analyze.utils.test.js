@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { calculateDistanceMeters, parseOSMHistoryXml, summarizeHistory, buildImageryLinks, buildNewsLinks, buildStreetViewLinks, buildHistoryChanges, buildAccessLines, fetchRoute, fetchNewsArticles, fetchWaybackReleases, isValidCoordinates, buildRelatedMediaLinks, estimateVegetationOvergrowth, buildSatelliteComparison } from '../../functions/api/analyze.js';
+import { calculateDistanceMeters, parseOSMHistoryXml, summarizeHistory, buildImageryLinks, buildNewsLinks, buildStreetViewLinks, buildHistoryChanges, buildAccessLines, fetchRoute, fetchNewsArticles, fetchWaybackReleases, isValidCoordinates, buildRelatedMediaLinks, estimateVegetationOvergrowth, buildSatelliteComparison, fetchWikimediaContent } from '../../functions/api/analyze.js';
 import { vi } from 'vitest';
 
 afterEach(() => {
@@ -179,6 +179,41 @@ describe('Analyze helpers', () => {
             expect(veg.current.coverage).toBeGreaterThan(0);
             expect(veg.current.coverage).toBeLessThanOrEqual(1);
             expect(veg.historical.length).toBeGreaterThan(0);
+        });
+    });
+
+    describe('fetchWikimediaContent', () => {
+        it('parses commons and wikipedia data with stripping', async () => {
+            const commonsResponse = {
+                query: {
+                    pages: {
+                        1: {
+                            title: 'Test',
+                            imageinfo: [{
+                                url: 'https://img',
+                                descriptionurl: 'https://desc',
+                                extmetadata: {
+                                    Artist: { value: '<b>A</b>' },
+                                    LicenseShortName: { value: 'CC' },
+                                    DateTimeOriginal: { value: '<i>2020</i>' }
+                                }
+                            }]
+                        }
+                    }
+                }
+            };
+            const wikiResponse = { query: { geosearch: [{ title: 'Article', dist: 10 }] } };
+
+            const fetchMock = vi.fn()
+                .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(commonsResponse) })
+                .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(wikiResponse) });
+
+            global.fetch = fetchMock;
+            const data = await fetchWikimediaContent('Name', 1, 2);
+            expect(data.commons.photos[0].author).toBe('A');
+            expect(data.commons.photos[0].date).toBe('2020');
+            expect(data.wikipedia[0].title).toBe('Article');
+            expect(fetchMock).toHaveBeenCalledTimes(2);
         });
     });
 });
