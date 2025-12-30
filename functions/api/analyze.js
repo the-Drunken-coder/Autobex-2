@@ -11,17 +11,29 @@ function calculateDistanceMeters(lat1, lon1, lat2, lon2) {
 
 function parseOSMHistoryXml(xmlText, type) {
     const entries = [];
-    const entryRegex = new RegExp(`<${type}[^>]*?(?:/>|>[\\s\\S]*?<\\/${type}>)`, 'g');
-    let match;
-    while ((match = entryRegex.exec(xmlText)) !== null) {
-        const entryText = match[0];
-        const versionMatch = entryText.match(/version="([^"]+)"/);
-        const timestampMatch = entryText.match(/timestamp="([^"]+)"/);
-        const userMatch = entryText.match(/user="([^"]+)"/);
+    const segments = xmlText.split(`<${type}`);
+    segments.shift(); // drop any leading content
+
+    segments.forEach(segment => {
+        const closingIndex = segment.indexOf(`</${type}>`);
+        const selfCloseIndex = segment.indexOf('/>');
+        let content = null;
+
+        if (selfCloseIndex !== -1 && (closingIndex === -1 || selfCloseIndex < closingIndex)) {
+            content = `<${type}${segment.slice(0, selfCloseIndex + 2)}`;
+        } else if (closingIndex !== -1) {
+            content = `<${type}${segment.slice(0, closingIndex + (`</${type}>`).length)}`;
+        }
+
+        if (!content) return;
+
+        const versionMatch = content.match(/version="([^"]+)"/);
+        const timestampMatch = content.match(/timestamp="([^"]+)"/);
+        const userMatch = content.match(/user="([^"]+)"/);
         const tags = {};
         const tagRegex = /<tag k="([^"]+)" v="([^"]*)"\/>/g;
         let tagMatch;
-        while ((tagMatch = tagRegex.exec(entryText)) !== null) {
+        while ((tagMatch = tagRegex.exec(content)) !== null) {
             tags[tagMatch[1]] = tagMatch[2];
         }
         entries.push({
@@ -30,7 +42,8 @@ function parseOSMHistoryXml(xmlText, type) {
             user: userMatch ? userMatch[1] : null,
             tags
         });
-    }
+    });
+
     entries.sort((a, b) => (a.version || 0) - (b.version || 0));
     return entries;
 }
@@ -65,6 +78,10 @@ function summarizeHistory(entries) {
     };
 }
 
+function isValidCoordinates(lat, lon) {
+    return Number.isFinite(lat) && Number.isFinite(lon) && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
+}
+
 async function fetchOverpass(query) {
     const overpassUrl = 'https://overpass-api.de/api/interpreter';
     const response = await fetch(overpassUrl, {
@@ -85,6 +102,10 @@ async function fetchOverpass(query) {
 }
 
 async function findAccessAndDistances(lat, lon) {
+    if (!isValidCoordinates(lat, lon)) {
+        return {};
+    }
+
     const result = {};
 
     const parkingQuery = `[out:json][timeout:25];
@@ -151,7 +172,7 @@ async function fetchHistoryData(type, id) {
 }
 
 function buildImageryLinks(lat, lon) {
-    if (!lat || !lon) return null;
+    if (!isValidCoordinates(lat, lon)) return null;
 
     return {
         current: {
@@ -180,8 +201,8 @@ function buildNewsLinks(name, address, lat, lon) {
     if (name) queryParts.push(name);
     if (address?.['addr:city']) queryParts.push(address['addr:city']);
     if (address?.['addr:state']) queryParts.push(address['addr:state']);
-    if (lat && lon) queryParts.push(`${lat.toFixed(4)}, ${lon.toFixed(4)}`);
-    const fallbackQuery = (lat && lon) ? `${lat},${lon}` : 'abandoned location';
+    if (isValidCoordinates(lat, lon)) queryParts.push(`${lat.toFixed(4)}, ${lon.toFixed(4)}`);
+    const fallbackQuery = isValidCoordinates(lat, lon) ? `${lat},${lon}` : 'abandoned location';
     const query = encodeURIComponent(queryParts.join(' ').trim() || fallbackQuery);
 
     return {
@@ -213,7 +234,7 @@ function buildNewsLinks(name, address, lat, lon) {
 }
 
 function buildStreetViewLinks(lat, lon) {
-    if (!lat || !lon) return null;
+    if (!isValidCoordinates(lat, lon)) return null;
 
     return {
         google: {
@@ -377,7 +398,7 @@ out center meta;
         }
 
         let distanceAccess = null;
-        if (processedElement.lat && processedElement.lon) {
+        if (isValidCoordinates(processedElement.lat, processedElement.lon)) {
             try {
                 distanceAccess = await findAccessAndDistances(processedElement.lat, processedElement.lon);
             } catch (error) {
@@ -433,4 +454,4 @@ out center meta;
     }
 }
 
-export { calculateDistanceMeters, parseOSMHistoryXml, summarizeHistory };
+export { calculateDistanceMeters, parseOSMHistoryXml, summarizeHistory, buildImageryLinks, buildNewsLinks, buildStreetViewLinks, isValidCoordinates };

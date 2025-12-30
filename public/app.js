@@ -1643,6 +1643,13 @@ function displayAnalyzeResults(data) {
         return `${Math.round(meters)} m`;
     };
 
+    const safeDirectionsLink = (lat, lon) => {
+        const latNum = Number(lat);
+        const lonNum = Number(lon);
+        if (!Number.isFinite(latNum) || !Number.isFinite(lonNum)) return '';
+        return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(latNum)},${encodeURIComponent(lonNum)}`;
+    };
+
     let html = '';
     
     // Basic Information
@@ -1697,7 +1704,7 @@ function displayAnalyzeResults(data) {
                             ${escapeHtml(parking.name || 'Parking')}
                             <br/>
                             ${formatDistance(parking.distance)}
-                            ${parking.lat && parking.lon ? `<br/><a href="https://www.google.com/maps/dir/?api=1&destination=${parking.lat},${parking.lon}" target="_blank" rel="noopener noreferrer">Directions</a>` : ''}
+                            ${(parking.lat && parking.lon && safeDirectionsLink(parking.lat, parking.lon)) ? `<br/><a href="${safeDirectionsLink(parking.lat, parking.lon)}" target="_blank" rel="noopener noreferrer">Directions</a>` : ''}
                         </span>
                     </div>
             `;
@@ -1711,7 +1718,7 @@ function displayAnalyzeResults(data) {
                             ${escapeHtml(road.name || (road.tags ? road.tags.highway : '') || 'Road')}
                             <br/>
                             ${formatDistance(road.distance)}
-                            ${road.lat && road.lon ? `<br/><a href="https://www.google.com/maps/dir/?api=1&destination=${road.lat},${road.lon}" target="_blank" rel="noopener noreferrer">Directions</a>` : ''}
+                            ${(road.lat && road.lon && safeDirectionsLink(road.lat, road.lon)) ? `<br/><a href="${safeDirectionsLink(road.lat, road.lon)}" target="_blank" rel="noopener noreferrer">Directions</a>` : ''}
                         </span>
                     </div>
             `;
