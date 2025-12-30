@@ -1163,6 +1163,10 @@ function renderPlaceCard(place, index) {
                 </div>
             </div>
             <div class="result-actions">
+                <button class="result-btn result-btn-analyze" onclick="event.stopPropagation(); openInAnalyze('${place.type}', ${place.id})">
+                    <i data-lucide="bar-chart-3"></i>
+                    Analyze
+                </button>
                 <a href="${googleMapsUrl}" target="_blank" rel="noopener noreferrer" class="result-btn result-btn-google" onclick="event.stopPropagation()">
                     <i data-lucide="external-link"></i>
                     Google Maps
@@ -1219,6 +1223,10 @@ function renderPlaceGroup(group, groupIndex) {
                     </div>
                 </div>
                 <div class="result-actions">
+                    <button class="result-btn result-btn-analyze" onclick="event.stopPropagation(); openInAnalyze('${place.type}', ${place.id})">
+                        <i data-lucide="bar-chart-3"></i>
+                        Analyze
+                    </button>
                     <a href="${googleMapsUrl}" target="_blank" rel="noopener noreferrer" class="result-btn result-btn-google" onclick="event.stopPropagation()">
                         <i data-lucide="external-link"></i>
                         Google Maps
@@ -1519,18 +1527,289 @@ function switchTool(tool) {
     
     // Show/hide tool content
     const sidebar = document.getElementById('sidebar');
+    const analyzeContainer = document.getElementById('analyzeContainer');
     const mainContent = document.querySelector('.main-content');
     
     if (tool === 'search') {
         sidebar.style.display = 'flex';
+        if (analyzeContainer) analyzeContainer.style.display = 'none';
         mainContent.style.display = 'block';
+    } else if (tool === 'analyze') {
+        sidebar.style.display = 'none';
+        mainContent.style.display = 'none';
+        if (analyzeContainer) analyzeContainer.style.display = 'flex';
     } else {
-        // For future tools, hide search interface
+        // For future tools, hide all sidebars
         sidebar.style.display = 'none';
         mainContent.style.display = 'block';
+        if (analyzeContainer) analyzeContainer.style.display = 'none';
     }
     
     lucide.createIcons();
+}
+
+// Open a place in the Analyze tool
+window.openInAnalyze = function(osmType, osmId) {
+    // Switch to analyze tool
+    switchTool('analyze');
+    
+    // Set the OSM type and ID
+    const typeSelect = document.getElementById('osmType');
+    const idInput = document.getElementById('osmId');
+    
+    if (typeSelect && idInput) {
+        typeSelect.value = osmType;
+        idInput.value = osmId;
+        
+        // Trigger analysis after a short delay to ensure UI is ready
+        setTimeout(() => {
+            analyzeLocation();
+        }, 100);
+    }
+}
+
+// Analyze location by OSM ID
+async function analyzeLocation() {
+    const osmType = document.getElementById('osmType').value;
+    const osmId = document.getElementById('osmId').value;
+    const analyzeBtn = document.getElementById('analyzeBtn');
+    const analyzeResults = document.getElementById('analyzeResults');
+    const analyzeLoading = document.getElementById('analyzeLoading');
+    
+    if (!osmId || !osmId.trim()) {
+        showAnalyzeError('Please enter an OSM ID');
+        return;
+    }
+    
+    const id = parseInt(osmId.trim());
+    if (isNaN(id) || id <= 0) {
+        showAnalyzeError('Please enter a valid OSM ID (positive number)');
+        return;
+    }
+    
+    // Show loading state
+    analyzeBtn.disabled = true;
+    analyzeBtn.innerHTML = '<i data-lucide="loader-2"></i> Analyzing...';
+    analyzeLoading.style.display = 'flex';
+    analyzeResults.style.display = 'none';
+    lucide.createIcons();
+    
+    try {
+        console.log(`🔍 [Analyze] Analyzing ${osmType}/${id}...`);
+        
+        const apiUrl = `/api/analyze?type=${osmType}&id=${id}`;
+        const response = await fetch(apiUrl);
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || `Analysis failed: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        console.log('📦 [Analyze] Received data:', data);
+        
+        if (data.error) {
+            throw new Error(data.error);
+        }
+        
+        displayAnalyzeResults(data);
+        
+    } catch (error) {
+        console.error('❌ [Analyze Error]', error);
+        showAnalyzeError(error.message || 'Failed to analyze location');
+    } finally {
+        analyzeBtn.disabled = false;
+        analyzeBtn.innerHTML = '<i data-lucide="search"></i> Analyze Location';
+        analyzeLoading.style.display = 'none';
+        lucide.createIcons();
+    }
+}
+
+function displayAnalyzeResults(data) {
+    const analyzeResults = document.getElementById('analyzeResults');
+    analyzeResults.style.display = 'block';
+    
+    const element = data.element;
+    if (!element) {
+        showAnalyzeError('No data found for this OSM ID');
+        return;
+    }
+    
+    let html = '';
+    
+    // Basic Information
+    html += `
+        <div class="analyze-section">
+            <h2><i data-lucide="info"></i>Basic Information</h2>
+            <div class="analyze-info-grid">
+                <div class="analyze-info-item">
+                    <span class="analyze-info-label">OSM ID</span>
+                    <span class="analyze-info-value">
+                        <a href="https://www.openstreetmap.org/${element.type}/${element.id}" target="_blank" rel="noopener noreferrer">
+                            ${element.type}/${element.id}
+                        </a>
+                    </span>
+                </div>
+                <div class="analyze-info-item">
+                    <span class="analyze-info-label">Type</span>
+                    <span class="analyze-info-value">${element.type}</span>
+                </div>
+    `;
+    
+    if (element.lat && element.lon) {
+        html += `
+                <div class="analyze-info-item">
+                    <span class="analyze-info-label">Coordinates</span>
+                    <span class="analyze-info-value">${element.lat.toFixed(6)}, ${element.lon.toFixed(6)}</span>
+                </div>
+                <div class="analyze-info-item">
+                    <span class="analyze-info-label">Links</span>
+                    <span class="analyze-info-value">
+                        <a href="https://www.google.com/maps?q=${element.lat},${element.lon}" target="_blank" rel="noopener noreferrer">Google Maps</a> | 
+                        <a href="https://www.bing.com/maps?q=${element.lat},${element.lon}" target="_blank" rel="noopener noreferrer">Bing Maps</a>
+                    </span>
+                </div>
+        `;
+    }
+    
+    html += `</div></div>`;
+    
+    // Name and Description
+    if (element.name || element.description) {
+        html += `
+            <div class="analyze-section">
+                <h2><i data-lucide="tag"></i>Name & Description</h2>
+                <div class="analyze-info-grid">
+        `;
+        if (element.name) {
+            html += `
+                    <div class="analyze-info-item">
+                        <span class="analyze-info-label">Name</span>
+                        <span class="analyze-info-value">${escapeHtml(element.name)}</span>
+                    </div>
+            `;
+        }
+        if (element.description) {
+            html += `
+                    <div class="analyze-info-item" style="grid-column: 1 / -1;">
+                        <span class="analyze-info-label">Description</span>
+                        <span class="analyze-info-value">${escapeHtml(element.description)}</span>
+                    </div>
+            `;
+        }
+        html += `</div></div>`;
+    }
+    
+    // Address Information
+    if (element.address) {
+        html += `
+            <div class="analyze-section">
+                <h2><i data-lucide="map-pin"></i>Address</h2>
+                <div class="analyze-info-grid">
+        `;
+        Object.entries(element.address).forEach(([key, value]) => {
+            if (value) {
+                html += `
+                    <div class="analyze-info-item">
+                        <span class="analyze-info-label">${key.replace('addr:', '').replace(/([A-Z])/g, ' $1').trim()}</span>
+                        <span class="analyze-info-value">${escapeHtml(value)}</span>
+                    </div>
+                `;
+            }
+        });
+        html += `</div></div>`;
+    }
+    
+    // Building Information
+    if (element.building) {
+        html += `
+            <div class="analyze-section">
+                <h2><i data-lucide="building"></i>Building Information</h2>
+                <div class="analyze-info-grid">
+        `;
+        Object.entries(element.building).forEach(([key, value]) => {
+            if (value) {
+                html += `
+                    <div class="analyze-info-item">
+                        <span class="analyze-info-label">${key.replace(/([A-Z])/g, ' $1').trim()}</span>
+                        <span class="analyze-info-value">${escapeHtml(value)}</span>
+                    </div>
+                `;
+            }
+        });
+        html += `</div></div>`;
+    }
+    
+    // External Links
+    if (element.wikipedia || element.wikidata) {
+        html += `
+            <div class="analyze-section">
+                <h2><i data-lucide="external-link"></i>External Links</h2>
+                <div class="analyze-info-grid">
+        `;
+        if (element.wikipedia) {
+            const wikiParts = element.wikipedia.split(':');
+            const wikiUrl = `https://${wikiParts[0]}.wikipedia.org/wiki/${encodeURIComponent(wikiParts.slice(1).join(':'))}`;
+            html += `
+                    <div class="analyze-info-item">
+                        <span class="analyze-info-label">Wikipedia</span>
+                        <span class="analyze-info-value">
+                            <a href="${wikiUrl}" target="_blank" rel="noopener noreferrer">${escapeHtml(element.wikipedia)}</a>
+                        </span>
+                    </div>
+            `;
+        }
+        if (element.wikidata) {
+            html += `
+                    <div class="analyze-info-item">
+                        <span class="analyze-info-label">Wikidata</span>
+                        <span class="analyze-info-value">
+                            <a href="https://www.wikidata.org/wiki/${element.wikidata}" target="_blank" rel="noopener noreferrer">${element.wikidata}</a>
+                        </span>
+                    </div>
+            `;
+        }
+        html += `</div></div>`;
+    }
+    
+    // All Tags
+    if (element.tags && Object.keys(element.tags).length > 0) {
+        html += `
+            <div class="analyze-section">
+                <h2><i data-lucide="tags"></i>All Tags (${Object.keys(element.tags).length})</h2>
+                <div class="analyze-tags">
+        `;
+        Object.entries(element.tags).sort().forEach(([key, value]) => {
+            html += `
+                    <div class="analyze-tag">
+                        <span class="analyze-tag-key">${escapeHtml(key)}</span>
+                        <span class="analyze-tag-value">${escapeHtml(value)}</span>
+                    </div>
+            `;
+        });
+        html += `</div></div>`;
+    }
+    
+    analyzeResults.innerHTML = html;
+    lucide.createIcons();
+}
+
+function showAnalyzeError(message) {
+    const analyzeResults = document.getElementById('analyzeResults');
+    analyzeResults.style.display = 'block';
+    analyzeResults.innerHTML = `
+        <div class="analyze-error">
+            <i data-lucide="alert-circle"></i>
+            <span>${escapeHtml(message)}</span>
+        </div>
+    `;
+    lucide.createIcons();
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 // Update radius preview when radius changes
@@ -1594,6 +1873,21 @@ document.getElementById('radiusInputField').addEventListener('keypress', (e) => 
         document.getElementById('searchBtn').click();
     }
 });
+
+// Analyze button event listener
+const analyzeBtn = document.getElementById('analyzeBtn');
+if (analyzeBtn) {
+    analyzeBtn.addEventListener('click', analyzeLocation);
+}
+
+const osmIdInput = document.getElementById('osmId');
+if (osmIdInput) {
+    osmIdInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            analyzeLocation();
+        }
+    });
+}
 
 // Initialize map and UI on load
 initMap();

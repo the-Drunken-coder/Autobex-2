@@ -23,6 +23,10 @@
                     <i data-lucide="search"></i>
                     <span>Search</span>
                 </button>
+                <button class="tool-btn" data-tool="analyze">
+                    <i data-lucide="bar-chart-3"></i>
+                    <span>Analyze</span>
+                </button>
             </nav>
         </div>
     </div>
@@ -366,6 +370,43 @@
                 </section>
             </div>
         </aside>
+
+        <div class="analyze-container" id="analyzeContainer" style="display: none;">
+            <div class="analyze-content">
+                <div class="analyze-header">
+                    <h1>
+                        <i data-lucide="bar-chart-3"></i>
+                        Analyze Location
+                    </h1>
+                    <p class="analyze-subtitle">Enter an OpenStreetMap ID to learn more about a location</p>
+                </div>
+                
+                <div class="analyze-input-section">
+                    <div class="analyze-input-group">
+                        <label for="osmType">Element Type:</label>
+                        <select id="osmType" class="analyze-select">
+                            <option value="node">Node</option>
+                            <option value="way">Way</option>
+                            <option value="relation">Relation</option>
+                        </select>
+                    </div>
+                    <div class="analyze-input-group">
+                        <label for="osmId">OSM ID:</label>
+                        <input type="number" id="osmId" class="analyze-input" placeholder="e.g. 12345678" />
+                    </div>
+                    <button id="analyzeBtn" class="primary-btn analyze-btn">
+                        <i data-lucide="search"></i>
+                        Analyze Location
+                    </button>
+                </div>
+                
+                <div id="analyzeResults" class="analyze-results" style="display: none;"></div>
+                <div id="analyzeLoading" class="analyze-loading" style="display: none;">
+                    <div class="loading-spinner"></div>
+                    <p>Analyzing location...</p>
+                </div>
+            </div>
+        </div>
 
         <main class="main-content">
             <div id="map"></div>

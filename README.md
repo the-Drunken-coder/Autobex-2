@@ -12,8 +12,10 @@ A web application that finds abandoned places by querying OpenStreetMap data. Se
 - **Interactive Map:** 
   - View results on an interactive Leaflet map with markers for each abandoned place
   - Click on the map to set search coordinates (radius center or polygon points)
+  - Live preview of search areas (radius circle or polygon outline) as you configure them
   - Multiple basemap options: OpenStreetMap, Google Maps Satellite, Bing Maps Satellite, Esri World Imagery
   - Marker clustering for better performance with many results
+  - Custom markers with detailed popups showing place information and links to external maps
 
 - **Comprehensive Filter System:** 
   - **Basic Status:** Abandoned, Disused
@@ -32,6 +34,7 @@ A web application that finds abandoned places by querying OpenStreetMap data. Se
   - Collapsible groups for multiple places in the same area
   - Click on results to focus the map and open popup
   - Results sidebar can be collapsed/expanded for better map visibility
+  - Grouping can be toggled on/off after search to reorganize results
 
 - **User Interface:**
   - Modern dark theme with responsive design
@@ -96,11 +99,12 @@ The application will be available at `http://localhost:8788` (or the port shown 
 2. Either:
    - Click on the map to set the center point (coordinates will auto-fill)
    - Or manually enter Latitude (e.g., 40.7128) and Longitude (e.g., -74.0060)
-3. Enter Radius in kilometers (e.g., 5)
-4. Optionally adjust filters in the Filters section
-5. Click "Find Places"
+3. Enter Radius in kilometers (e.g., 5) - a preview circle will appear on the map
+4. Optionally adjust filters in the Filters section (collapsible)
+5. Optionally toggle "Group nearby places" to group results within 150m
+6. Click "Find Places"
 
-**Tip:** The map cursor changes to a crosshair when radius search is selected. Click anywhere on the map to set the center point.
+**Tip:** The map cursor changes to a crosshair when radius search is selected. Click anywhere on the map to set the center point. As you type the radius value, a preview circle will appear on the map showing the search area.
 
 ### Polygon Search
 1. Select "Custom Polygon" from the search type dropdown
@@ -114,10 +118,11 @@ The application will be available at `http://localhost:8788` (or the port shown 
 40.7128,-74.0160
 ```
 3. Use "Clear Points" button to reset if needed
-4. Optionally adjust filters in the Filters section
-5. Click "Find Places"
+4. Optionally adjust filters in the Filters section (collapsible)
+5. Optionally toggle "Group nearby places" to group results within 150m
+6. Click "Find Places"
 
-**Note:** Polygons must have at least 3 coordinate points. The map will show a preview polygon as you add points.
+**Note:** Polygons must have at least 3 coordinate points. The map will show a preview polygon with numbered markers as you add points. You can also manually edit coordinates in the textarea and the preview will update automatically.
 
 ## Deployment to Cloudflare Pages
 
@@ -140,10 +145,12 @@ Alternatively, connect your GitHub repository to Cloudflare Pages for automatic 
 
 ## How It Works
 
-1. **Frontend:** The user interface collects search parameters and displays results
+1. **Frontend:** The user interface collects search parameters and displays results with real-time progress tracking
 2. **Geocoding:** For city searches, the Nominatim API converts city names to bounding boxes
-3. **Overpass Query:** The backend queries OpenStreetMap's Overpass API for abandoned places
-4. **Results:** Found places are displayed on an interactive map with markers
+3. **Overpass Query:** The backend queries OpenStreetMap's Overpass API for abandoned places using a comprehensive set of tags
+4. **Filtering:** Results are filtered to exclude tourist attractions and memorials, then deduplicated
+5. **Grouping:** Places within 150 meters can be grouped together (optional) for easier navigation
+6. **Results:** Found places are displayed on an interactive map with markers and in a sortable sidebar
 
 ## OpenStreetMap Tags Queried
 
@@ -164,7 +171,7 @@ The application searches for places tagged with various abandoned/disused indica
 - `abandoned:railway=station`
 
 **Buildings:**
-- `building:condition=ruinous` (and variants)
+- `building:condition=ruinous` (matches: ruinous, partly_ruinous, mainly_ruinous, completely_ruinous)
 - `building=ruins`
 
 **Amenities:**
@@ -183,7 +190,7 @@ The application searches for places tagged with various abandoned/disused indica
 - `disused:aeroway=*`
 - `abandoned:aeroway=*`
 
-The query searches nodes, ways, and relations matching these tags within the specified search area.
+The query searches nodes, ways, and relations matching these tags within the specified search area. Tourist attractions and memorials are automatically filtered out to reduce false positives.
 
 ## API Endpoint
 
@@ -244,6 +251,8 @@ Response:
   - Leaflet.markercluster for marker clustering
   - Lucide Icons for UI icons
   - Dark theme with responsive design
+  - Real-time progress tracking with animated progress bars
+  - Interactive map previews for radius and polygon searches
 - **Backend:** Cloudflare Pages Functions (serverless)
 - **APIs Used:**
   - Nominatim API for geocoding

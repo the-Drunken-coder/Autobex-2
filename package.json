@@ -4,9 +4,15 @@
   "description": "AutoBex 2 - Find abandoned places using OpenStreetMap data",
   "scripts": {
     "dev": "wrangler pages dev public",
-    "deploy": "wrangler pages deploy public"
+    "deploy": "wrangler pages deploy public",
+    "test": "npm run test:js && npm run test:py",
+    "test:js": "vitest run",
+    "test:js:watch": "vitest",
+    "test:py": "pytest tests/test_start.py -v",
+    "test:py:watch": "pytest-watch tests/test_start.py"
   },
   "devDependencies": {
-    "wrangler": "^3.0.0"
+    "wrangler": "^3.0.0",
+    "vitest": "^1.0.0"
   }
 }
