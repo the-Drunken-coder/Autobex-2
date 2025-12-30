@@ -1724,25 +1724,32 @@ function setupImageryControls(imagery) {
         status.textContent = 'No Wayback imagery releases available for this location.';
         return;
     }
+    
+    // Store releases as data attribute for later access
+    select._releases = releases;
+    
+    // Populate dropdown with releases
     select.innerHTML = releases
-        .map(release => {
-            const safeId = escapeHtml(String(release.id ?? ''));
-            const safeLabel = escapeHtml(String(release.date ?? release.id ?? ''));
+        .map((release, index) => {
+            const safeId = escapeHtml(String(index)); // Use index as value
+            const dateLabel = release.date || release.id || 'Unknown';
+            const safeLabel = escapeHtml(String(dateLabel));
             return `<option value="${safeId}">${safeLabel}</option>`;
         })
         .join('');
 
     const updateLayer = () => {
-        const selectedId = select.value || (releases[0] && releases[0].id);
-        console.log('🔍 [Imagery] Selected ID:', selectedId, 'Available releases:', releases.map(r => ({ id: r.id, date: r.date, tileUrl: r.tileUrl })));
+        const selectedIndex = parseInt(select.value) || 0;
+        const selectedRelease = releases[selectedIndex] || releases[0];
         
-        const selectedRelease = releases.find(r => String(r.id) === String(selectedId)) || releases[0];
         if (!selectedRelease || !selectedRelease.tileUrl) {
             console.error('❌ [Imagery] No valid release selected or missing tileUrl');
+            status.textContent = 'No imagery available for this release.';
             return;
         }
 
-        console.log('🔄 [Imagery] Updating layer:', {
+        console.log('🔄 [Imagery] Switching to release:', {
+            index: selectedIndex,
             id: selectedRelease.id,
             date: selectedRelease.date,
             tileUrl: selectedRelease.tileUrl
@@ -1751,53 +1758,41 @@ function setupImageryControls(imagery) {
         // Remove existing historical layer completely
         if (analyzeLayers.historical) {
             analyzeMap.removeLayer(analyzeLayers.historical);
-            // Clear the layer's tile cache
-            if (analyzeLayers.historical._tiles) {
-                Object.keys(analyzeLayers.historical._tiles).forEach(key => {
-                    const tile = analyzeLayers.historical._tiles[key];
-                    if (tile && tile.el) {
-                        tile.el.remove();
-                    }
-                });
-            }
             analyzeLayers.historical = null;
         }
 
         // Create new tile layer with the selected release URL
         const tileUrl = selectedRelease.tileUrl;
-        console.log('🗺️ [Imagery] Creating tile layer with URL:', tileUrl);
         
         analyzeLayers.historical = L.tileLayer(tileUrl, {
-            attribution: '&copy; Esri Wayback Imagery',
+            attribution: '&copy; <a href="https://www.esri.com/">Esri</a> Wayback Imagery',
             maxZoom: 19,
-            opacity: (Number(slider.value) || 0) / 100,
-            tileSize: 256,
-            zoomOffset: 0
+            opacity: (Number(slider.value) || 100) / 100,
+            tileSize: 256
         });
         
         // Add layer to map
         analyzeLayers.historical.addTo(analyzeMap);
         
         // Force map to refresh and load new tiles
-        analyzeMap.invalidateSize();
         setTimeout(() => {
-            if (analyzeMap && analyzeLayers.historical) {
-                analyzeMap.setView(analyzeMap.getCenter(), analyzeMap.getZoom(), { animate: false });
+            if (analyzeMap) {
+                analyzeMap.invalidateSize();
             }
-        }, 100);
+        }, 50);
 
-        const releaseLabel = selectedRelease.date || selectedRelease.id;
-        const safeReleaseLabel = releaseLabel == null ? '' : String(releaseLabel);
-        status.textContent = `Showing Wayback release ${safeReleaseLabel}`;
+        const releaseLabel = selectedRelease.date || selectedRelease.id || 'Unknown';
+        status.textContent = `Showing Wayback release ${releaseLabel}`;
         if (sliderValue) {
             sliderValue.textContent = `${slider.value}%`;
         }
     };
 
+    // Only bind events once
     if (!select.dataset.bound) {
         slider.addEventListener('input', () => {
             if (analyzeLayers.historical) {
-                analyzeLayers.historical.setOpacity((Number(slider.value) || 0) / 100);
+                analyzeLayers.historical.setOpacity((Number(slider.value) || 100) / 100);
             }
             if (sliderValue) {
                 sliderValue.textContent = `${slider.value}%`;
@@ -1807,6 +1802,8 @@ function setupImageryControls(imagery) {
         select.addEventListener('change', updateLayer);
         select.dataset.bound = 'true';
     }
+    
+    // Initialize with first release
     updateLayer();
 }
 

@@ -426,30 +426,60 @@ function buildHistoryChanges(entries) {
 
 async function fetchWaybackReleases() {
     try {
-        const res = await fetch('https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/VectorTileServer/releases?f=pjson', {
+        // Fetch from the official Esri Wayback configuration endpoint
+        const res = await fetch('https://s3-us-west-2.amazonaws.com/config.maptiles.arcgis.com/waybackconfig.json', {
             headers: { 'Accept': 'application/json' }
         });
         if (!res.ok) throw new Error('Wayback release fetch failed');
         const json = await res.json();
-        const releases = (json.releases || json.versions || []).slice(0, 6).map((release, idx) => {
-            const rawId = release.release || release.id || release.name || release.itemId || `release-${idx}`;
-            const safeIdMatch = String(rawId).match(/^[A-Za-z0-9_-]+$/);
-            const id = safeIdMatch ? safeIdMatch[0] : `release-${idx}`;
-            const date = release.releaseDate || release.date || release.release_date || null;
-            return {
-                id,
-                date,
-                tileUrl: `https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/WMTS/1.0.0/${encodeURIComponent(id)}/default028mm/MapServer/tile/{z}/{y}/{x}`
-            };
+        
+        // The config is an object where keys are release IDs
+        // Convert to array and sort by date (newest first), then take top releases
+        const releaseEntries = Object.entries(json)
+            .map(([releaseId, data]) => {
+                // Extract date from title like "World Imagery (Wayback 2023-10-11)"
+                const dateMatch = data.itemTitle?.match(/Wayback (\d{4}-\d{2}-\d{2})/);
+                const date = dateMatch ? dateMatch[1] : data.itemTitle || releaseId;
+                
+                return {
+                    id: releaseId,
+                    date: date,
+                    itemTitle: data.itemTitle,
+                    // The tile URL uses {level}/{row}/{col} format
+                    tileUrl: data.itemURL?.replace('{level}', '{z}').replace('{row}', '{y}').replace('{col}', '{x}') || 
+                        `https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/WMTS/1.0.0/default028mm/MapServer/tile/${releaseId}/{z}/{y}/{x}`
+                };
+            })
+            .filter(r => r.tileUrl && r.id)
+            .sort((a, b) => {
+                // Sort by date descending (newest first)
+                const dateA = a.date || '';
+                const dateB = b.date || '';
+                return dateB.localeCompare(dateA);
+            });
+        
+        // Return top 20 releases for good historical coverage
+        const releases = releaseEntries.slice(0, 20);
+        
+        // Add "Latest" as first option
+        releases.unshift({
+            id: 'latest',
+            date: 'Latest',
+            itemTitle: 'Current World Imagery',
+            tileUrl: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
         });
+        
+        console.log(`📅 [Analyze API] Fetched ${releases.length} Wayback releases`);
         return releases;
     } catch (err) {
         console.error('❌ [Analyze API] Failed to fetch Wayback releases', err);
-        // Fallback static releases
+        // Fallback static releases with correct URLs
         return [
-            { id: 'default028mm', date: 'Latest', tileUrl: 'https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/WMTS/1.0.0/default028mm/MapServer/tile/{z}/{y}/{x}' },
-            { id: '2017', date: '2017', tileUrl: 'https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/WMTS/1.0.0/2017/default028mm/MapServer/tile/{z}/{y}/{x}' },
-            { id: '2014', date: '2014', tileUrl: 'https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/WMTS/1.0.0/2014/default028mm/MapServer/tile/{z}/{y}/{x}' }
+            { id: 'latest', date: 'Latest', tileUrl: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' },
+            { id: '1034', date: '2023-10-11', tileUrl: 'https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/WMTS/1.0.0/default028mm/MapServer/tile/1034/{z}/{y}/{x}' },
+            { id: '64776', date: '2023-08-31', tileUrl: 'https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/WMTS/1.0.0/default028mm/MapServer/tile/64776/{z}/{y}/{x}' },
+            { id: '45134', date: '2022-12-14', tileUrl: 'https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/WMTS/1.0.0/default028mm/MapServer/tile/45134/{z}/{y}/{x}' },
+            { id: '7110', date: '2022-11-02', tileUrl: 'https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/WMTS/1.0.0/default028mm/MapServer/tile/7110/{z}/{y}/{x}' }
         ];
     }
 }
