@@ -1828,6 +1828,19 @@ function displayAnalyzeResults(data) {
         return `${Math.round(meters)} m`;
     };
 
+    const sanitizeUrl = (url) => {
+        if (!url) return '#';
+        try {
+            const parsed = new URL(url, 'https://example.com');
+            if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+                return parsed.href;
+            }
+        } catch (e) {
+            return '#';
+        }
+        return '#';
+    };
+
 
     let html = '';
     
@@ -1999,24 +2012,173 @@ function displayAnalyzeResults(data) {
         html += `</div></div>`;
     }
 
+    if (data.satelliteComparison) {
+        const comparison = data.satelliteComparison;
+        html += `
+            <div class="analyze-section">
+                <h2><i data-lucide="split-square-vertical"></i>Satellite Comparison</h2>
+                <div class="analyze-info-grid">
+        `;
+        if (comparison.current) {
+            html += `
+                <div class="analyze-info-item">
+                    <span class="analyze-info-label">Current Provider</span>
+                    <span class="analyze-info-value">${escapeHtml(comparison.current.provider || 'Current imagery')}</span>
+                </div>
+            `;
+        }
+        if (comparison.historical && comparison.historical.length > 0) {
+            const firstHistorical = comparison.historical[0];
+            html += `
+                <div class="analyze-info-item">
+                    <span class="analyze-info-label">Historical Layer</span>
+                    <span class="analyze-info-value">
+                        ${escapeHtml(firstHistorical.provider)}
+                        ${firstHistorical.date ? `(${escapeHtml(firstHistorical.date)})` : ''}
+                    </span>
+                </div>
+            `;
+        }
+        if (comparison.availableDates && comparison.availableDates.length > 0) {
+            html += `
+                <div class="analyze-info-item" style="grid-column: 1 / -1;">
+                    <span class="analyze-info-label">Available Releases</span>
+                    <span class="analyze-info-value">${escapeHtml(comparison.availableDates.slice(0, 6).join(', '))}</span>
+                </div>
+            `;
+        }
+        html += `</div></div>`;
+    }
+
+    if (data.vegetation) {
+        const vegetation = data.vegetation;
+        const formatCoverage = (value) => typeof value === 'number' ? `${Math.round(value * 100)}%` : '—';
+        const formatNdvi = (value) => (typeof value === 'number' && Number.isFinite(value)) ? value.toFixed(2) : '—';
+        html += `
+            <div class="analyze-section">
+                <h2><i data-lucide="leaf"></i>Vegetation Overgrowth</h2>
+                <p class="muted">${vegetation.simulated ? 'Simulated signal (not real NDVI). For reference only.' : ''}</p>
+                <div class="analyze-info-grid">
+                    <div class="analyze-info-item">
+                        <span class="analyze-info-label">Current Coverage</span>
+                        <span class="analyze-info-value">${formatCoverage(vegetation.current?.coverage)}</span>
+                    </div>
+                    <div class="analyze-info-item">
+                        <span class="analyze-info-label">Current NDVI</span>
+                        <span class="analyze-info-value">${formatNdvi(vegetation.current?.ndvi)}</span>
+                    </div>
+        `;
+        if (vegetation.historical && vegetation.historical.length > 0) {
+            const firstHistorical = vegetation.historical[0];
+            html += `
+                <div class="analyze-info-item">
+                    <span class="analyze-info-label">Historical (${escapeHtml(firstHistorical.date)})</span>
+                    <span class="analyze-info-value">${formatCoverage(firstHistorical.coverage)}</span>
+                </div>
+            `;
+        }
+        if (vegetation.growthRate !== undefined) {
+            html += `
+                <div class="analyze-info-item">
+                    <span class="analyze-info-label">Growth Rate</span>
+                    <span class="analyze-info-value">${typeof vegetation.growthRate === 'number' ? `${(vegetation.growthRate * 100).toFixed(2)}% / yr` : '—'}</span>
+                </div>
+            `;
+        }
+        if (vegetation.estimatedAbandonment) {
+            html += `
+                <div class="analyze-info-item">
+                    <span class="analyze-info-label">Estimated Abandonment</span>
+                    <span class="analyze-info-value">${escapeHtml(vegetation.estimatedAbandonment)}</span>
+                </div>
+            `;
+        }
+        html += `</div></div>`;
+    }
+
+    if ((data.commons && data.commons.photos && data.commons.photos.length > 0) || (data.wikipedia && data.wikipedia.length > 0)) {
+        const commonsPhotos = data.commons?.photos || [];
+        const wikiArticles = data.wikipedia || [];
+        html += `
+            <div class="analyze-section">
+                <h2><i data-lucide="image-plus"></i>Wikimedia Commons</h2>
+        `;
+        if (commonsPhotos.length > 0) {
+            html += `<div class="news-cards">`;
+            html += commonsPhotos.map(photo => `
+                <div class="news-card">
+                    <a href="${sanitizeUrl(photo.url)}" target="_blank" rel="noopener noreferrer">
+                        <img src="${sanitizeUrl(photo.thumbnail || photo.url)}" alt="${escapeHtml(photo.title || '')}" style="width:100%;border-radius:8px;margin-bottom:8px;object-fit:cover;max-height:160px;" loading="lazy"/>
+                    </a>
+                    <h4>${escapeHtml(photo.title || 'Commons Photo')}</h4>
+                    ${photo.author ? `<small class="muted">By ${escapeHtml(photo.author)}</small>` : ''}
+                    ${photo.license ? `<small class="muted">${escapeHtml(photo.license)}</small>` : ''}
+                    ${photo.date ? `<small class="muted">${escapeHtml(photo.date)}</small>` : ''}
+                </div>
+            `).join('');
+            html += `</div>`;
+        } else {
+            html += `<p class="muted">No Wikimedia Commons photos found nearby.</p>`;
+        }
+        if (wikiArticles.length > 0) {
+            html += `<div class="analyze-info-grid" style="grid-template-columns: 1fr;">`;
+            wikiArticles.forEach(article => {
+                html += `
+                    <div class="analyze-info-item">
+                        <span class="analyze-info-label">${escapeHtml(article.title)}</span>
+                        <span class="analyze-info-value">
+                            <a href="${sanitizeUrl(article.url)}" target="_blank" rel="noopener noreferrer">Open article</a>
+                            ${article.distance ? `<br/><small class="muted">${Math.round(article.distance)} m away</small>` : ''}
+                        </span>
+                    </div>
+                `;
+            });
+            html += `</div>`;
+        }
+        html += `</div>`;
+    }
+
+    if (data.media) {
+        const categories = ['flickr', 'instagram', 'youtube', 'reddit', 'forums'];
+        const cards = [];
+        categories.forEach(key => {
+            (data.media[key] || []).forEach(item => {
+                cards.push({
+                    title: item.title || key,
+                    url: item.url,
+                    source: item.source || key
+                });
+            });
+        });
+        html += `
+            <div class="analyze-section">
+                <h2><i data-lucide="share-2"></i>Related Media</h2>
+        `;
+        if (cards.length > 0) {
+            html += `<div class="news-cards">`;
+            html += cards.map(card => `
+                <div class="news-card">
+                    <div class="news-card-header">
+                        <span class="badge">${escapeHtml(card.source)}</span>
+                    </div>
+                    <a href="${sanitizeUrl(card.url)}" target="_blank" rel="noopener noreferrer">
+                        <h4>${escapeHtml(card.title)}</h4>
+                    </a>
+                </div>
+            `).join('');
+            html += `</div>`;
+        } else {
+            html += `<p class="muted">No media links available.</p>`;
+        }
+        html += `</div>`;
+    }
+
     if (data.news) {
         html += `
             <div class="analyze-section">
                 <h2><i data-lucide="newspaper"></i>News & Media</h2>
                 <div class="news-cards" id="newsCards">
         `;
-        const sanitizeUrl = (url) => {
-            if (!url) return '#';
-            try {
-                const parsed = new URL(url, 'https://example.com');
-                if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
-                    return parsed.href;
-                }
-            } catch (e) {
-                return '#';
-            }
-            return '#';
-        };
         const combinedArticles = [
             ...(data.news.articles?.current || []).map(a => ({ ...a, category: 'Recent' })),
             ...(data.news.articles?.historical || []).map(a => ({ ...a, category: 'Historical' }))
