@@ -1,6 +1,6 @@
 # News & Media Archives
 
-**Status:** Approved  
+**Status:** Added ✅  
 **Priority:** Medium  
 **Complexity:** Medium-High
 

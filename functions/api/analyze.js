@@ -239,25 +239,6 @@ function buildNewsLinks(name, address, lat, lon) {
     };
 }
 
-function buildStreetViewLinks(lat, lon) {
-    if (!isValidCoordinates(lat, lon)) return null;
-
-    return {
-        google: {
-            available: true,
-            url: `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lon}`
-        },
-        mapillary: {
-            available: true,
-            url: `https://www.mapillary.com/app/?lat=${lat}&lng=${lon}&z=18`
-        },
-        kartaview: {
-            available: true,
-            url: `https://kartaview.org/map/@${lat},${lon},17z`
-        }
-    };
-}
-
 export async function onRequestGet(context) {
     const { request } = context;
     const url = new URL(request.url);
@@ -421,7 +402,6 @@ out center meta;
 
         const imagery = buildImageryLinks(processedElement.lat, processedElement.lon);
         const news = buildNewsLinks(processedElement.name, processedElement.address, processedElement.lat, processedElement.lon);
-        const streetView = buildStreetViewLinks(processedElement.lat, processedElement.lon);
         
         const totalDuration = Date.now() - requestStartTime;
         console.log(`⏱️  [Analyze API] Response received in ${overpassDuration}ms`);
@@ -434,7 +414,6 @@ out center meta;
             history,
             imagery,
             news,
-            streetView,
             success: true
         }), {
             status: 200,
@@ -460,4 +439,4 @@ out center meta;
     }
 }
 
-export { calculateDistanceMeters, parseOSMHistoryXml, summarizeHistory, buildImageryLinks, buildNewsLinks, buildStreetViewLinks, isValidCoordinates };
+export { calculateDistanceMeters, parseOSMHistoryXml, summarizeHistory, buildImageryLinks, buildNewsLinks, isValidCoordinates };

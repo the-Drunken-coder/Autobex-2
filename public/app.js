@@ -453,6 +453,9 @@ function addMarker(place) {
     const marker = L.marker([lat, lon], { icon: customIcon })
         .bindPopup(popupContent);
     
+    // Store place data with marker for scrolling
+    marker._placeData = place;
+    
     // Add to cluster group instead of directly to map
     markerClusterGroup.addLayer(marker);
     markers.push(marker);
@@ -460,6 +463,8 @@ function addMarker(place) {
     // Initialize icons in popup after it's added
     marker.on('popupopen', () => {
         lucide.createIcons();
+        // Scroll to corresponding result card in sidebar
+        scrollToResultCard(lat, lon);
     });
 }
 
@@ -564,6 +569,16 @@ async function searchAbandonedPlaces() {
     
     console.log('🔍 [AutoBex 2] Starting search...');
     console.log('📋 [Search Params]', { searchType, filters });
+    
+    // Collapse filters menu
+    const filterContent = document.getElementById('filterContent');
+    const filterIcon = document.getElementById('filterIcon');
+    if (filterContent && !filterContent.classList.contains('collapsed')) {
+        filterContent.classList.add('collapsed');
+        filterContent.style.display = 'none';
+        filterIcon.setAttribute('data-lucide', 'chevron-right');
+        lucide.createIcons();
+    }
     
     let params = new URLSearchParams({
         type: searchType
@@ -977,8 +992,13 @@ function createMarkerForPlace(place) {
     const marker = L.marker([lat, lon], { icon: customIcon })
         .bindPopup(popupContent);
     
+    // Store place data with marker for scrolling
+    marker._placeData = place;
+    
     marker.on('popupopen', () => {
         lucide.createIcons();
+        // Scroll to corresponding result card in sidebar
+        scrollToResultCard(lat, lon);
     });
     
     return marker;
@@ -1109,6 +1129,45 @@ function displayResults(places, groups) {
     });
 }
 
+// Generate unique ID for a place based on coordinates
+function getPlaceId(place) {
+    return `place-${place.lat.toFixed(6)}-${place.lon.toFixed(6)}`;
+}
+
+// Scroll to a result card in the sidebar
+function scrollToResultCard(lat, lon) {
+    const placeId = `place-${lat.toFixed(6)}-${lon.toFixed(6)}`;
+    const resultCard = document.getElementById(placeId);
+    
+    if (resultCard) {
+        // Check if it's in a collapsed group
+        const groupContent = resultCard.closest('.result-group-content');
+        if (groupContent && groupContent.style.display === 'none') {
+            // Expand the group
+            const groupIndex = groupContent.id.replace('group-content-', '');
+            const toggleBtn = document.getElementById(`group-toggle-${groupIndex}`);
+            if (toggleBtn) {
+                groupContent.style.display = 'block';
+                const icon = toggleBtn.querySelector('i');
+                if (icon) {
+                    icon.setAttribute('data-lucide', 'chevron-down');
+                    lucide.createIcons();
+                }
+            }
+        }
+        
+        // Scroll to the card
+        resultCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        
+        // Highlight the card briefly
+        resultCard.style.transition = 'background-color 0.3s';
+        resultCard.style.backgroundColor = 'rgba(59, 130, 246, 0.2)';
+        setTimeout(() => {
+            resultCard.style.backgroundColor = '';
+        }, 2000);
+    }
+}
+
 // Render a single place card
 function renderPlaceCard(place, index) {
     // Build status tags
@@ -1151,9 +1210,10 @@ function renderPlaceCard(place, index) {
     // Map links
     const googleMapsUrl = getGoogleMapsUrl(place.lat, place.lon, displayName);
     const bingMapsUrl = getBingMapsUrl(place.lat, place.lon, displayName);
+    const placeId = getPlaceId(place);
     
     return `
-        <div class="result-card">
+        <div class="result-card" id="${placeId}">
             <div onclick="focusPlace(${place.lat}, ${place.lon})" style="cursor: pointer;">
                 <h3>${displayName}</h3>
                 <p class="result-type"><strong>Type:</strong> ${placeType}</p>
@@ -1212,8 +1272,9 @@ function renderPlaceGroup(group, groupIndex) {
         const googleMapsUrl = getGoogleMapsUrl(place.lat, place.lon, displayName);
         const bingMapsUrl = getBingMapsUrl(place.lat, place.lon, displayName);
         
+        const placeId = getPlaceId(place);
         return `
-            <div class="result-card result-card-nested">
+            <div class="result-card result-card-nested" id="${placeId}">
                 <div onclick="focusPlace(${place.lat}, ${place.lon})" style="cursor: pointer;">
                     <h4>${displayName}</h4>
                     <p class="result-type"><strong>Type:</strong> ${placeType}</p>
@@ -1811,28 +1872,6 @@ function displayAnalyzeResults(data) {
         html += `</div></div>`;
     }
     
-    if (data.streetView) {
-        html += `
-            <div class="analyze-section">
-                <h2><i data-lucide="camera"></i>Street-Level Imagery</h2>
-                <div class="analyze-info-grid">
-        `;
-        ['google', 'mapillary', 'kartaview'].forEach(providerKey => {
-            const provider = data.streetView[providerKey];
-            if (!provider) return;
-            const labelMap = { google: 'Google Street View', mapillary: 'Mapillary', kartaview: 'KartaView' };
-            html += `
-                    <div class="analyze-info-item">
-                        <span class="analyze-info-label">${labelMap[providerKey]}</span>
-                        <span class="analyze-info-value">
-                            ${provider.available ? `<a href="${provider.url}" target="_blank" rel="noopener noreferrer">Open imagery</a>` : 'Not available'}
-                        </span>
-                    </div>
-            `;
-        });
-        html += `</div></div>`;
-    }
-
     if (data.imagery) {
         html += `
             <div class="analyze-section">
@@ -1894,6 +1933,17 @@ function displayAnalyzeResults(data) {
             <div class="analyze-section">
                 <h2><i data-lucide="history"></i>Edit History</h2>
                 <div class="analyze-info-grid">
+        `;
+        // Add link to OSM history viewer
+        html += `
+                <div class="analyze-info-item" style="grid-column: 1 / -1;">
+                    <span class="analyze-info-label">View Full History</span>
+                    <span class="analyze-info-value">
+                        <a href="https://www.openstreetmap.org/${element.type}/${element.id}/history" target="_blank" rel="noopener noreferrer">
+                            OpenStreetMap History Viewer
+                        </a>
+                    </span>
+                </div>
         `;
         if (data.history.firstMapped) {
             html += `

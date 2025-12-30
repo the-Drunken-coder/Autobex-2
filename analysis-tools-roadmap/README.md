@@ -13,11 +13,11 @@ Each feature has its own markdown file with a rough implementation plan. These p
 
 ## ✅ Approved Features
 
-1. **[Distance & Access Analysis](./01-distance-access-analysis.md)** - Calculate distances to parking/roads and show access routes
-2. **[OSM Edit History](./02-osm-edit-history.md)** - Fetch and display OpenStreetMap edit history
-3. **[Historical Aerial Imagery](./03-historical-aerial-imagery.md)** - Link to and compare historical satellite imagery
-4. **[News & Media Archives](./04-news-media-archives.md)** - Search news articles and historical archives
-5. **[Street-Level Imagery](./05-street-level-imagery.md)** - Google Street View, Mapillary, and KartaView integration
+1. ✅ **[Distance & Access Analysis](./01-distance-access-analysis.md)** - Calculate distances to parking/roads and show access routes *(Added)*
+2. ✅ **[OSM Edit History](./02-osm-edit-history.md)** - Fetch and display OpenStreetMap edit history *(Added)*
+3. ✅ **[Historical Aerial Imagery](./03-historical-aerial-imagery.md)** - Link to and compare historical satellite imagery *(Added)*
+4. ✅ **[News & Media Archives](./04-news-media-archives.md)** - Search news articles and historical archives *(Added)*
+5. ❌ **[Street-Level Imagery](./05-street-level-imagery.md)** - Google Street View, Mapillary, and KartaView integration *(Removed)*
 6. **[Wikipedia Commons](./06-wikipedia-commons.md)** - Search and display Wikimedia Commons photos
 7. **[Related Media Search](./07-related-media-search.md)** - Search Flickr, Instagram, YouTube, Reddit, and forums
 8. **[Satellite Comparison](./08-satellite-comparison.md)** - Side-by-side historical vs current imagery comparison
@@ -26,7 +26,7 @@ Each feature has its own markdown file with a rough implementation plan. These p
 ## 🎯 Implementation Priority
 
 These can be implemented incrementally. Suggested order:
-1. Simple integrations (Street View, Wikipedia Commons)
+1. Simple integrations (Wikipedia Commons)
 2. Distance calculations (Distance & Access Analysis)
 3. External API integrations (Media Search, News Archives)
 4. Complex analysis (OSM History, Satellite Comparison, Vegetation Detection)
