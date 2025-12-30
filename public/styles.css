@@ -1406,17 +1406,17 @@ textarea {
         margin-left: calc(-1 * 100%);
     }
     
-.floating-btn {
-    display: flex !important;
-}
+    .floating-btn {
+        display: flex !important;
+    }
 
-.input-grid {
+    .input-grid {
         grid-template-columns: 1fr;
     }
     
-.input-grid input:last-child {
-    grid-column: span 1;
-}
+    .input-grid input:last-child {
+        grid-column: span 1;
+    }
 }
 
 /* Analyze enhancements */

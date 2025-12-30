@@ -296,12 +296,14 @@ async function fetchWaybackReleases() {
         if (!res.ok) throw new Error('Wayback release fetch failed');
         const json = await res.json();
         const releases = (json.releases || json.versions || []).slice(0, 6).map((release, idx) => {
-            const id = release.release || release.id || release.name || release.itemId || `release-${idx}`;
+            const rawId = release.release || release.id || release.name || release.itemId || `release-${idx}`;
+            const safeIdMatch = String(rawId).match(/^[A-Za-z0-9_-]+$/);
+            const id = safeIdMatch ? safeIdMatch[0] : `release-${idx}`;
             const date = release.releaseDate || release.date || release.release_date || null;
             return {
                 id,
                 date,
-                tileUrl: `https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/WMTS/1.0.0/${id}/default028mm/MapServer/tile/{z}/{y}/{x}`
+                tileUrl: `https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/WMTS/1.0.0/${encodeURIComponent(id)}/default028mm/MapServer/tile/{z}/{y}/{x}`
             };
         });
         return releases;
@@ -326,74 +328,103 @@ async function fetchNewsArticles(query) {
         return results;
     }
 
-    // Google News RSS (recent)
-    try {
-        const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=en-US&gl=US&ceid=US:en`;
-        const res = await fetch(rssUrl);
-        if (res.ok) {
-            const text = await res.text();
-            const items = [];
-            const itemRegex = /<item>([\s\S]*?)<\/item>/g;
-            let match;
-            while ((match = itemRegex.exec(text)) !== null && items.length < 5) {
-                const block = match[1];
-                const titleMatch = block.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>|<title>(.*?)<\/title>/);
-                const linkMatch = block.match(/<link>(.*?)<\/link>/);
-                const dateMatch = block.match(/<pubDate>(.*?)<\/pubDate>/);
-                const title = titleMatch ? (titleMatch[1] || titleMatch[2]) : 'Untitled';
-                const link = linkMatch ? linkMatch[1] : '#';
-                items.push({
-                    title,
-                    url: link,
-                    date: dateMatch ? dateMatch[1] : null,
+    const tasks = [];
+
+    const parseRssItems = (xmlText) => {
+        try {
+            if (typeof DOMParser !== 'undefined') {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(xmlText, 'text/xml');
+                const items = Array.from(doc.querySelectorAll('item')).slice(0, 5);
+                return items.map(item => ({
+                    title: item.querySelector('title')?.textContent || 'Untitled',
+                    url: item.querySelector('link')?.textContent || '#',
+                    date: item.querySelector('pubDate')?.textContent || null,
                     source: 'Google News'
-                });
+                }));
             }
-            results.current = items;
+        } catch (e) {
+            // Fallback to regex below
         }
-    } catch (err) {
-        console.error('❌ [Analyze API] Google News RSS failed', err);
-    }
+        const items = [];
+        const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+        let match;
+        while ((match = itemRegex.exec(xmlText)) !== null && items.length < 5) {
+            const block = match[1];
+            const titleMatch = block.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>|<title>(.*?)<\/title>/);
+            const linkMatch = block.match(/<link>(.*?)<\/link>/);
+            const dateMatch = block.match(/<pubDate>(.*?)<\/pubDate>/);
+            const title = titleMatch ? (titleMatch[1] || titleMatch[2]) : 'Untitled';
+            const link = linkMatch ? linkMatch[1] : '#';
+            items.push({
+                title,
+                url: link,
+                date: dateMatch ? dateMatch[1] : null,
+                source: 'Google News'
+            });
+        }
+        return items;
+    };
+
+    // Google News RSS (recent)
+    tasks.push((async () => {
+        try {
+            const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=en-US&gl=US&ceid=US:en`;
+            const res = await fetch(rssUrl);
+            if (res.ok) {
+                const text = await res.text();
+                results.current = parseRssItems(text);
+            }
+        } catch (err) {
+            console.error('❌ [Analyze API] Google News RSS failed', err?.message || err);
+        }
+    })());
 
     // Chronicling America (historical)
-    try {
-        const chroniclingUrl = `https://chroniclingamerica.loc.gov/search/pages/results/?format=json&proxtext=${encodeURIComponent(query)}&rows=5`;
-        const res = await fetch(chroniclingUrl, { headers: { 'Accept': 'application/json' } });
-        if (res.ok) {
-            const json = await res.json();
-            const items = (json.items || json.items_found || json.itemsReturned || json.articles || json.results || json?.items || []).slice(0, 5);
-            const mapped = items.map(item => ({
-                title: item.headline || item.title || item.label || 'Article',
-                url: item.id || item.url || item['@id'],
-                date: item.date || item.created || item.pub_date,
-                source: item.publisher || 'Chronicling America',
-                snippet: item.snippet || item.text || null
-            }));
-            results.historical.push(...mapped);
+    tasks.push((async () => {
+        try {
+            const chroniclingUrl = `https://chroniclingamerica.loc.gov/search/pages/results/?format=json&proxtext=${encodeURIComponent(query)}&rows=5`;
+            const res = await fetch(chroniclingUrl, { headers: { 'Accept': 'application/json' } });
+            if (res.ok) {
+                const json = await res.json();
+                const items = Array.isArray(json?.items) ? json.items.slice(0, 5) : [];
+                const mapped = items.map(item => ({
+                    title: item.headline || item.title || item.label || 'Article',
+                    url: item.id || item.url || item['@id'],
+                    date: item.date || item.created || item.pub_date,
+                    source: item.publisher || 'Chronicling America',
+                    snippet: item.snippet || item.text || null
+                }));
+                results.historical.push(...mapped);
+            }
+        } catch (err) {
+            console.error('❌ [Analyze API] Chronicling America fetch failed', err?.message || err);
         }
-    } catch (err) {
-        console.error('❌ [Analyze API] Chronicling America fetch failed', err);
-    }
+    })());
 
     // Archive.org (historical / mixed)
-    try {
-        const archiveUrl = `https://archive.org/advancedsearch.php?q=${encodeURIComponent(query)}&output=json&rows=5`;
-        const res = await fetch(archiveUrl, { headers: { 'Accept': 'application/json' } });
-        if (res.ok) {
-            const json = await res.json();
-            const docs = json?.response?.docs || [];
-            const mapped = docs.slice(0, 5).map(doc => ({
-                title: doc.title || 'Archive Item',
-                url: `https://archive.org/details/${doc.identifier}`,
-                date: doc.date || doc.year,
-                source: doc.creator || 'Archive.org',
-                snippet: doc.description ? (Array.isArray(doc.description) ? doc.description[0] : doc.description) : null
-            }));
-            results.historical.push(...mapped);
+    tasks.push((async () => {
+        try {
+            const archiveUrl = `https://archive.org/advancedsearch.php?q=${encodeURIComponent(query)}&output=json&rows=5`;
+            const res = await fetch(archiveUrl, { headers: { 'Accept': 'application/json' } });
+            if (res.ok) {
+                const json = await res.json();
+                const docs = json?.response?.docs || [];
+                const mapped = docs.slice(0, 5).map(doc => ({
+                    title: doc.title || 'Archive Item',
+                    url: `https://archive.org/details/${encodeURIComponent(doc.identifier)}`,
+                    date: doc.date || doc.year,
+                    source: doc.creator || 'Archive.org',
+                    snippet: doc.description ? (Array.isArray(doc.description) ? doc.description[0] : doc.description) : null
+                }));
+                results.historical.push(...mapped);
+            }
+        } catch (err) {
+            console.error('❌ [Analyze API] Archive.org fetch failed', err?.message || err);
         }
-    } catch (err) {
-        console.error('❌ [Analyze API] Archive.org fetch failed', err);
-    }
+    })());
+
+    await Promise.allSettled(tasks);
 
     return results;
 }
@@ -423,7 +454,8 @@ async function fetchRoute(origin, destination) {
         distance: calculateDistanceMeters(origin.lat, origin.lon, destination.lat, destination.lon),
         duration: null,
         steps: [],
-        summary: 'Direct line (routing unavailable)'
+        summary: 'Direct line (routing unavailable)',
+        isFallback: true
     };
 
     try {
@@ -643,10 +675,16 @@ out center meta;
         if (distanceAccess) {
             const origin = { lat: processedElement.lat, lon: processedElement.lon };
             routing = {};
-            if (distanceAccess.nearestParking) {
+            if (distanceAccess.nearestParking && distanceAccess.nearestRoad) {
+                const [parkingRoute, roadRoute] = await Promise.all([
+                    fetchRoute(origin, distanceAccess.nearestParking),
+                    fetchRoute(origin, distanceAccess.nearestRoad)
+                ]);
+                routing.parkingRoute = parkingRoute;
+                routing.roadRoute = roadRoute;
+            } else if (distanceAccess.nearestParking) {
                 routing.parkingRoute = await fetchRoute(origin, distanceAccess.nearestParking);
-            }
-            if (distanceAccess.nearestRoad) {
+            } else if (distanceAccess.nearestRoad) {
                 routing.roadRoute = await fetchRoute(origin, distanceAccess.nearestRoad);
             }
             routing.accessLines = buildAccessLines(origin, distanceAccess.accessPoints || []);
@@ -690,4 +728,4 @@ out center meta;
     }
 }
 
-export { calculateDistanceMeters, parseOSMHistoryXml, summarizeHistory, buildImageryLinks, buildNewsLinks, buildStreetViewLinks, isValidCoordinates };
+export { calculateDistanceMeters, parseOSMHistoryXml, summarizeHistory, buildImageryLinks, buildNewsLinks, buildStreetViewLinks, buildHistoryChanges, buildAccessLines, fetchRoute, fetchNewsArticles, fetchWaybackReleases, isValidCoordinates };

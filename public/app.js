@@ -1763,11 +1763,23 @@ function renderRouteSteps(routing) {
     const buildList = (route, title) => {
         if (!route) return '';
         const durationMinutes = route.duration ? Math.round(route.duration / 60) : null;
+        if (route.isFallback) {
+            return `
+            <div class="route-block">
+                <div class="route-heading">
+                    <strong>${title}</strong>
+                    <span>${escapeHtml(route.summary || 'Direct line')}</span>
+                    <small>${(route.distance / 1000).toFixed(2)} km</small>
+                </div>
+                <p class="muted">Routing unavailable; showing straight-line distance.</p>
+            </div>
+            `;
+        }
         return `
             <div class="route-block">
                 <div class="route-heading">
                     <strong>${title}</strong>
-                    <span>${route.summary || ''}</span>
+                    <span>${escapeHtml(route.summary || '')}</span>
                     <small>${(route.distance / 1000).toFixed(2)} km ${durationMinutes ? `• ${durationMinutes} min` : ''}</small>
                 </div>
                 <ol>
@@ -1801,11 +1813,17 @@ function setupImageryControls(imagery) {
         status.textContent = 'No Wayback imagery releases available for this location.';
         return;
     }
-    select.innerHTML = releases.map(release => `<option value="${release.id}">${release.date || release.id}</option>`).join('');
+    select.innerHTML = releases
+        .map(release => {
+            const safeId = escapeHtml(String(release.id ?? ''));
+            const safeLabel = escapeHtml(String(release.date ?? release.id ?? ''));
+            return `<option value="${safeId}">${safeLabel}</option>`;
+        })
+        .join('');
 
     const updateLayer = () => {
         const selectedId = select.value || (releases[0] && releases[0].id);
-        const selectedRelease = releases.find(r => r.id === selectedId) || releases[0];
+        const selectedRelease = releases.find(r => String(r.id) === selectedId) || releases[0];
         if (!selectedRelease) return;
 
         if (analyzeLayers.historical) {
@@ -1819,22 +1837,27 @@ function setupImageryControls(imagery) {
             opacity: (Number(slider.value) || 0) / 100
         }).addTo(analyzeMap);
 
-        status.textContent = `Showing Wayback release ${selectedRelease.date || selectedRelease.id}`;
+        const releaseLabel = selectedRelease.date || selectedRelease.id;
+        const safeReleaseLabel = releaseLabel == null ? '' : String(releaseLabel);
+        status.textContent = `Showing Wayback release ${safeReleaseLabel}`;
         if (sliderValue) {
             sliderValue.textContent = `${slider.value}%`;
         }
     };
 
-    slider.addEventListener('input', () => {
-        if (analyzeLayers.historical) {
-            analyzeLayers.historical.setOpacity((Number(slider.value) || 0) / 100);
-        }
-        if (sliderValue) {
-            sliderValue.textContent = `${slider.value}%`;
-        }
-    });
+    if (!select.dataset.bound) {
+        slider.addEventListener('input', () => {
+            if (analyzeLayers.historical) {
+                analyzeLayers.historical.setOpacity((Number(slider.value) || 0) / 100);
+            }
+            if (sliderValue) {
+                sliderValue.textContent = `${slider.value}%`;
+            }
+        });
 
-    select.addEventListener('change', updateLayer);
+        select.addEventListener('change', updateLayer);
+        select.dataset.bound = 'true';
+    }
     updateLayer();
 }
 
@@ -2104,6 +2127,18 @@ function displayAnalyzeResults(data) {
                 <h2><i data-lucide="newspaper"></i>News & Media</h2>
                 <div class="news-cards" id="newsCards">
         `;
+        const sanitizeUrl = (url) => {
+            if (!url) return '#';
+            try {
+                const parsed = new URL(url, 'https://example.com');
+                if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+                    return parsed.href;
+                }
+            } catch (e) {
+                return '#';
+            }
+            return '#';
+        };
         const combinedArticles = [
             ...(data.news.articles?.current || []).map(a => ({ ...a, category: 'Recent' })),
             ...(data.news.articles?.historical || []).map(a => ({ ...a, category: 'Historical' }))
@@ -2115,7 +2150,7 @@ function displayAnalyzeResults(data) {
                         <span class="badge">${escapeHtml(article.category)}</span>
                         ${article.date ? `<small>${escapeHtml(article.date)}</small>` : ''}
                     </div>
-                    <a href="${article.url}" target="_blank" rel="noopener noreferrer">
+                    <a href="${sanitizeUrl(article.url)}" target="_blank" rel="noopener noreferrer">
                         <h4>${escapeHtml(article.title)}</h4>
                     </a>
                     ${article.snippet ? `<p>${escapeHtml(article.snippet)}</p>` : ''}
@@ -2126,26 +2161,6 @@ function displayAnalyzeResults(data) {
             html += `<p class="muted">No news articles found for this location.</p>`;
         }
         html += `
-                </div>
-                <div class="analyze-info-grid">
-                    ${(data.news.current || []).map(item => `
-                        <div class="analyze-info-item">
-                            <span class="analyze-info-label">Recent (link)</span>
-                            <span class="analyze-info-value">
-                                <a href="${item.url}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title)}</a>
-                                <br/><small>${escapeHtml(item.source || '')}</small>
-                            </span>
-                        </div>
-                    `).join('')}
-                    ${(data.news.historical || []).map(item => `
-                        <div class="analyze-info-item">
-                            <span class="analyze-info-label">Historical (link)</span>
-                            <span class="analyze-info-value">
-                                <a href="${item.url}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title)}</a>
-                                <br/><small>${escapeHtml(item.source || '')}</small>
-                            </span>
-                        </div>
-                    `).join('')}
                 </div>
             </div>
         `;

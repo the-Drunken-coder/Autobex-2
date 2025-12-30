@@ -1,5 +1,10 @@
-import { describe, it, expect } from 'vitest';
-import { calculateDistanceMeters, parseOSMHistoryXml, summarizeHistory, buildImageryLinks, buildNewsLinks, buildStreetViewLinks, isValidCoordinates } from '../../functions/api/analyze.js';
+import { describe, it, expect, afterEach } from 'vitest';
+import { calculateDistanceMeters, parseOSMHistoryXml, summarizeHistory, buildImageryLinks, buildNewsLinks, buildStreetViewLinks, buildHistoryChanges, buildAccessLines, fetchRoute, fetchNewsArticles, fetchWaybackReleases, isValidCoordinates } from '../../functions/api/analyze.js';
+import { vi } from 'vitest';
+
+afterEach(() => {
+    vi.restoreAllMocks();
+});
 
 describe('Analyze helpers', () => {
     describe('calculateDistanceMeters', () => {
@@ -78,6 +83,71 @@ describe('Analyze helpers', () => {
         it('builds street view links for valid coords', () => {
             const links = buildStreetViewLinks(10, 20);
             expect(links.google.url).toContain('10');
+        });
+    });
+
+    describe('history changes', () => {
+        it('computes added/changed/removed tags', () => {
+            const entries = [
+                { version: 1, timestamp: 't1', user: 'a', tags: { name: 'Old', foo: 'bar' } },
+                { version: 2, timestamp: 't2', user: 'b', tags: { name: 'New', baz: 'qux' } }
+            ];
+            const changes = buildHistoryChanges(entries);
+            expect(changes).toHaveLength(1);
+            expect(changes[0].removed[0]).toEqual({ key: 'foo', value: 'bar' });
+            expect(changes[0].added[0]).toEqual({ key: 'baz', value: 'qux' });
+            expect(changes[0].changed[0]).toEqual({ key: 'name', from: 'Old', to: 'New' });
+        });
+    });
+
+    describe('access lines', () => {
+        it('skips invalid coords', () => {
+            const lines = buildAccessLines({ lat: 0, lon: 0 }, [{ lat: 999, lon: 0 }]);
+            expect(lines).toHaveLength(0);
+        });
+        it('builds lines with distances', () => {
+            const lines = buildAccessLines({ lat: 0, lon: 0 }, [{ lat: 0, lon: 1 }]);
+            expect(lines[0].distance).toBeGreaterThan(0);
+        });
+    });
+
+    describe('fetchRoute', () => {
+        it('returns fallback with flag when routing fails', async () => {
+            global.fetch = vi.fn().mockRejectedValue(new Error('fail'));
+            const route = await fetchRoute({ lat: 0, lon: 0 }, { lat: 0, lon: 1 });
+            expect(route.isFallback).toBe(true);
+            expect(route.geometry.coordinates).toHaveLength(2);
+        });
+    });
+
+    describe('fetchWaybackReleases', () => {
+        it('sanitizes release id', async () => {
+            global.fetch = vi.fn().mockResolvedValue({
+                ok: true,
+                json: () => Promise.resolve({ releases: [{ release: 'bad/../id', releaseDate: '2020' }] })
+            });
+            const releases = await fetchWaybackReleases();
+            expect(releases[0].tileUrl).not.toContain('..');
+        });
+    });
+
+    describe('fetchNewsArticles', () => {
+        it('fetches in parallel and maps items', async () => {
+            const rssBody = `
+                <rss><channel>
+                    <item><title>Test</title><link>https://example.com/a</link><pubDate>Today</pubDate></item>
+                </channel></rss>`;
+            const chroniclingBody = { items: [{ title: 'Paper', id: 'https://paper' }] };
+            const archiveBody = { response: { docs: [{ title: 'Archive', identifier: 'arc id' }] } };
+            const fetchMock = vi.fn()
+                .mockResolvedValueOnce({ ok: true, text: () => Promise.resolve(rssBody) })
+                .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(chroniclingBody) })
+                .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(archiveBody) });
+            global.fetch = fetchMock;
+            const news = await fetchNewsArticles('query');
+            expect(news.current[0].title).toBe('Test');
+            expect(news.historical.length).toBeGreaterThan(0);
+            expect(fetchMock).toHaveBeenCalledTimes(3);
         });
     });
 });
