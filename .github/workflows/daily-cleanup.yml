@@ -1,0 +1,30 @@
+name: Daily Cleanup
+
+on:
+  schedule:
+    # Runs at 3 AM UTC every day
+    - cron: '0 3 * * *'
+  workflow_dispatch: # Allows manual triggering
+
+permissions:
+  actions: write # Required to cancel workflow runs
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cancel all in-progress workflow runs
+        run: |
+          CURRENT_RUN_ID=${{ github.run_id }}
+          
+          # Get all in-progress workflow runs
+          RUNS=$(gh api repos/${{ github.repository }}/actions/runs --jq '.workflow_runs[] | select(.status == "in_progress" or .status == "queued") | select(.id != '$CURRENT_RUN_ID') | .id')
+          
+          # Cancel each run
+          for run_id in $RUNS; do
+            echo "Cancelling workflow run $run_id"
+            gh api repos/${{ github.repository }}/actions/runs/$run_id/cancel -X POST || true
+          done
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
