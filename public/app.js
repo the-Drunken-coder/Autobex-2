@@ -2390,6 +2390,33 @@ handleSearchTypeChange();
 // Add map click handler
 map.on('click', handleMapClick);
 
+// Mobile-first sidebar state
+const sidebarEl = document.getElementById('sidebar');
+const openSidebarBtn = document.getElementById('openSidebar');
+
+function applyResponsiveSidebarState() {
+    if (!sidebarEl || !openSidebarBtn) return;
+    
+    const shouldCollapse = window.innerWidth <= 768;
+    if (shouldCollapse) {
+        sidebarEl.classList.add('collapsed');
+        openSidebarBtn.style.display = 'flex';
+    } else {
+        sidebarEl.classList.remove('collapsed');
+        openSidebarBtn.style.display = 'none';
+    }
+}
+
+applyResponsiveSidebarState();
+let resizeTimeout = null;
+window.addEventListener('resize', () => {
+    if (resizeTimeout) clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(() => {
+        applyResponsiveSidebarState();
+        resizeTimeout = null;
+    }, 150);
+});
+
 // Check URL hash on load to determine which tool to show
 if (window.location.hash === '#analyze') {
     switchTool('analyze');
