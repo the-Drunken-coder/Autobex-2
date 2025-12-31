@@ -1412,6 +1412,7 @@ function toggleSidebar() {
     const openBtn = document.getElementById('openSidebar');
     sidebar.classList.toggle('collapsed');
     openBtn.style.display = sidebar.classList.contains('collapsed') ? 'flex' : 'none';
+    applyResponsiveSidebarState();
 }
 
 // Event listeners
@@ -2393,17 +2394,22 @@ map.on('click', handleMapClick);
 // Mobile-first sidebar state
 const sidebarEl = document.getElementById('sidebar');
 const openSidebarBtn = document.getElementById('openSidebar');
+const MOBILE_BREAKPOINT = 768;
 
 function applyResponsiveSidebarState() {
     if (!sidebarEl || !openSidebarBtn) return;
     
-    const shouldCollapse = window.innerWidth <= 768;
-    if (shouldCollapse) {
+    const shouldCollapse = window.innerWidth <= MOBILE_BREAKPOINT;
+    const isCollapsed = sidebarEl.classList.contains('collapsed');
+    
+    if (shouldCollapse && !isCollapsed) {
         sidebarEl.classList.add('collapsed');
         openSidebarBtn.style.display = 'flex';
-    } else {
+    } else if (!shouldCollapse && isCollapsed) {
         sidebarEl.classList.remove('collapsed');
         openSidebarBtn.style.display = 'none';
+    } else {
+        openSidebarBtn.style.display = shouldCollapse ? 'flex' : 'none';
     }
 }
 
