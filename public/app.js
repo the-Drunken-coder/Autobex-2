@@ -1410,9 +1410,8 @@ function handleSearchTypeChange() {
 function toggleSidebar() {
     const sidebar = document.getElementById('sidebar');
     const openBtn = document.getElementById('openSidebar');
-    sidebar.classList.toggle('collapsed');
-    openBtn.style.display = sidebar.classList.contains('collapsed') ? 'flex' : 'none';
-    applyResponsiveSidebarState();
+    const isCollapsed = sidebar.classList.toggle('collapsed');
+    openBtn.style.display = isCollapsed ? 'flex' : 'none';
 }
 
 // Event listeners
@@ -2404,13 +2403,8 @@ function applyResponsiveSidebarState() {
     
     if (shouldCollapse && !isCollapsed) {
         sidebarEl.classList.add('collapsed');
-        openSidebarBtn.style.display = 'flex';
-    } else if (!shouldCollapse && isCollapsed) {
-        sidebarEl.classList.remove('collapsed');
-        openSidebarBtn.style.display = 'none';
-    } else {
-        openSidebarBtn.style.display = shouldCollapse ? 'flex' : 'none';
     }
+    openSidebarBtn.style.display = sidebarEl.classList.contains('collapsed') ? 'flex' : 'none';
 }
 
 applyResponsiveSidebarState();
@@ -2419,7 +2413,6 @@ window.addEventListener('resize', () => {
     if (resizeTimeout) clearTimeout(resizeTimeout);
     resizeTimeout = setTimeout(() => {
         applyResponsiveSidebarState();
-        resizeTimeout = null;
     }, 150);
 });
 
