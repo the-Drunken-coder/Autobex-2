@@ -1410,8 +1410,8 @@ function handleSearchTypeChange() {
 function toggleSidebar() {
     const sidebar = document.getElementById('sidebar');
     const openBtn = document.getElementById('openSidebar');
-    sidebar.classList.toggle('collapsed');
-    openBtn.style.display = sidebar.classList.contains('collapsed') ? 'flex' : 'none';
+    const isCollapsed = sidebar.classList.toggle('collapsed');
+    openBtn.style.display = isCollapsed ? 'flex' : 'none';
 }
 
 // Event listeners
@@ -2389,6 +2389,32 @@ handleSearchTypeChange();
 
 // Add map click handler
 map.on('click', handleMapClick);
+
+// Mobile-first sidebar state
+const sidebarEl = document.getElementById('sidebar');
+const openSidebarBtn = document.getElementById('openSidebar');
+const MOBILE_BREAKPOINT = 768;
+
+function applyResponsiveSidebarState() {
+    if (!sidebarEl || !openSidebarBtn) return;
+    
+    const shouldCollapse = window.innerWidth <= MOBILE_BREAKPOINT;
+    const isCollapsed = sidebarEl.classList.contains('collapsed');
+    
+    if (shouldCollapse && !isCollapsed) {
+        sidebarEl.classList.add('collapsed');
+    }
+    openSidebarBtn.style.display = sidebarEl.classList.contains('collapsed') ? 'flex' : 'none';
+}
+
+applyResponsiveSidebarState();
+let resizeTimeout = null;
+window.addEventListener('resize', () => {
+    if (resizeTimeout) clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(() => {
+        applyResponsiveSidebarState();
+    }, 150);
+});
 
 // Check URL hash on load to determine which tool to show
 if (window.location.hash === '#analyze') {
