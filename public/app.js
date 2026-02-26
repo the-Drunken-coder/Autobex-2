@@ -377,11 +377,11 @@ function addMarker(place) {
     if (place.tags.disused === 'yes') statusTags.push('Disused');
     if (place.tags.ruins === 'yes') statusTags.push('Ruins');
     if (place.tags.historic === 'ruins') statusTags.push('Historic Ruins');
+    if (place.tags.amenity === 'police') statusTags.push('Police Station');
     
     // Determine display name
     let displayName = place.name;
     if (!displayName) {
-        // Try to create a better name from available info
         if (place.address) {
             displayName = place.address.split(',')[0]; // Use street address
         } else if (place.buildingType) {
@@ -445,10 +445,12 @@ function addMarker(place) {
     
     const popupContent = `<div class="map-popup">${popupParts.join('')}</div>`;
     
-    // Custom icon for markers
+    // Custom icon for markers - blue for police stations, amber for others
+    const isPoliceStation = place.tags.amenity === 'police';
+    const markerColor = isPoliceStation ? '#3b82f6' : '#f59e0b';
     const customIcon = L.divIcon({
         className: 'custom-marker',
-        html: `<div style="background-color: #f59e0b; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 10px rgba(0,0,0,0.5);"></div>`,
+        html: `<div style="background-color: ${markerColor}; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 10px rgba(0,0,0,0.5);"></div>`,
         iconSize: [12, 12]
     });
 
@@ -566,7 +568,8 @@ async function searchAbandonedPlaces() {
         shopVacant: document.getElementById('filter-shop-vacant').checked,
         landuseBrownfield: document.getElementById('filter-landuse-brownfield').checked,
         disusedAeroway: document.getElementById('filter-disused-aeroway').checked,
-        abandonedAeroway: document.getElementById('filter-abandoned-aeroway').checked
+        abandonedAeroway: document.getElementById('filter-abandoned-aeroway').checked,
+        policeStation: document.getElementById('filter-police-station').checked
     };
     
     console.log('🔍 [AutoBex 2] Starting search...');
@@ -926,6 +929,7 @@ function createMarkerForPlace(place) {
     if (place.tags.disused === 'yes') statusTags.push('Disused');
     if (place.tags.ruins === 'yes') statusTags.push('Ruins');
     if (place.tags.historic === 'ruins') statusTags.push('Historic Ruins');
+    if (place.tags.amenity === 'police') statusTags.push('Police Station');
     
     // Determine display name
     let displayName = place.name;
@@ -985,9 +989,12 @@ function createMarkerForPlace(place) {
     
     const popupContent = `<div class="map-popup">${popupParts.join('')}</div>`;
     
+    // Blue for police stations, amber for others
+    const isPoliceStation = place.tags.amenity === 'police';
+    const markerColor = isPoliceStation ? '#3b82f6' : '#f59e0b';
     const customIcon = L.divIcon({
         className: 'custom-marker',
-        html: `<div style="background-color: #f59e0b; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 10px rgba(0,0,0,0.5);"></div>`,
+        html: `<div style="background-color: ${markerColor}; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 10px rgba(0,0,0,0.5);"></div>`,
         iconSize: [12, 12]
     });
 

@@ -23,7 +23,8 @@ export async function onRequestGet(context) {
         shopVacant: url.searchParams.get('shopVacant') !== 'false',
         landuseBrownfield: url.searchParams.get('landuseBrownfield') !== 'false',
         disusedAeroway: url.searchParams.get('disusedAeroway') !== 'false',
-        abandonedAeroway: url.searchParams.get('abandonedAeroway') !== 'false'
+        abandonedAeroway: url.searchParams.get('abandonedAeroway') !== 'false',
+        policeStation: url.searchParams.get('policeStation') === 'true'
     };
     
     console.log('🔍 [AutoBex 2 API] Request received:', { type, filters });
@@ -284,6 +285,9 @@ export async function onRequestGet(context) {
         // Aeroways - use regex to match any value
         if (filters.disusedAeroway) allTags.push('"disused:aeroway"~"."');
         if (filters.abandonedAeroway) allTags.push('"abandoned:aeroway"~"."');
+        
+        // Police Stations
+        if (filters.policeStation) allTags.push('"amenity"="police"');
         
         // Check if we have any tags to query
         if (allTags.length === 0) {

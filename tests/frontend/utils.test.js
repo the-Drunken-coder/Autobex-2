@@ -144,5 +144,57 @@ describe('Frontend Utilities', () => {
             expect(coords[0]).toEqual({ lat: 40.7128, lon: -74.0060 });
         });
     });
+
+    describe('Marker color for police stations', () => {
+        // Mirrors the logic in app.js addMarker/createMarkerForPlace
+        function getMarkerColor(place) {
+            const isPoliceStation = place.tags.amenity === 'police';
+            return isPoliceStation ? '#3b82f6' : '#f59e0b';
+        }
+
+        it('should return blue for police stations', () => {
+            const place = { tags: { amenity: 'police' } };
+            expect(getMarkerColor(place)).toBe('#3b82f6');
+        });
+
+        it('should return amber for non-police places', () => {
+            const place = { tags: { abandoned: 'yes' } };
+            expect(getMarkerColor(place)).toBe('#f59e0b');
+        });
+
+        it('should return amber when amenity is not police', () => {
+            const place = { tags: { amenity: 'hospital' } };
+            expect(getMarkerColor(place)).toBe('#f59e0b');
+        });
+    });
+
+    describe('Status tags for police stations', () => {
+        function getStatusTags(place) {
+            const statusTags = [];
+            if (place.tags.abandoned === 'yes') statusTags.push('Abandoned');
+            if (place.tags.disused === 'yes') statusTags.push('Disused');
+            if (place.tags.ruins === 'yes') statusTags.push('Ruins');
+            if (place.tags.historic === 'ruins') statusTags.push('Historic Ruins');
+            if (place.tags.amenity === 'police') statusTags.push('Police Station');
+            return statusTags;
+        }
+
+        it('should include Police Station tag for police amenity', () => {
+            const place = { tags: { amenity: 'police' } };
+            expect(getStatusTags(place)).toContain('Police Station');
+        });
+
+        it('should not include Police Station tag for non-police places', () => {
+            const place = { tags: { abandoned: 'yes' } };
+            expect(getStatusTags(place)).not.toContain('Police Station');
+        });
+
+        it('should include both Abandoned and Police Station tags', () => {
+            const place = { tags: { abandoned: 'yes', amenity: 'police' } };
+            const tags = getStatusTags(place);
+            expect(tags).toContain('Abandoned');
+            expect(tags).toContain('Police Station');
+        });
+    });
 });
 
